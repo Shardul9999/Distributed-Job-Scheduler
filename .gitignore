@@ -1,0 +1,38 @@
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Environment -------------------------------------------------------------
+.env
+.env.local
+*.local
+
+# --- Node / Next.js (from Day 3) ---------------------------------------------
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+npm-debug.log*
+yarn-error.log*
+
+# --- Editors -----------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+
+# --- OS ----------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Docker volumes ----------------------------------------------------------
+postgres_data/

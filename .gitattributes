@@ -1,0 +1,30 @@
+# Normalize line endings across platforms.
+#
+# This repository is developed on Windows but every service runs inside a Linux
+# container. Without this file, Git checks shell scripts out with CRLF endings
+# on Windows, and the container fails at startup with:
+#
+#     /usr/bin/env: 'bash\r': No such file or directory
+#
+# Forcing LF on everything the container executes prevents that entirely.
+
+* text=auto eol=lf
+
+# Files the Linux container executes or parses directly.
+*.sh            text eol=lf
+*.py            text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+Dockerfile      text eol=lf
+*.mako          text eol=lf
+.env.example    text eol=lf
+
+# Binary assets: never touch.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.pdf           binary
+*.woff          binary
+*.woff2         binary

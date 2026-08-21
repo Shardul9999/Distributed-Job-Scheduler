@@ -1,0 +1,90 @@
+# Local topology for the distributed job scheduler.
+#
+# Day 0 brings up PostgreSQL and the API. The worker, scheduler and dashboard
+# services are added on Days 1-3; their configuration surface already exists in
+# .env.example so adding them is a compose change, not a redesign.
+
+name: codity
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: codity-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-codity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codity_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-codity}
+    ports:
+      # Exposed so you can attach psql or a GUI client from the host while
+      # inspecting the claim query.
+      - "${POSTGRES_EXPOSED_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # The API's depends_on waits on this. Without a real readiness check,
+      # containers start before PostgreSQL finishes initialising and the first
+      # migration fails on a connection refused.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-codity} -d ${POSTGRES_DB:-codity}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    command:
+      # Raised from the default 100. Every API replica and every worker holds a
+      # pool; the default ceiling is reached quickly once the fleet scales.
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      # Log any statement slower than 200ms. Useful while tuning the claim
+      # query on Day 1 -- it makes a missed index immediately visible.
+      - "-c"
+      - "log_min_duration_statement=200"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      target: dev
+    container_name: codity-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-codity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codity_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-codity}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev_only_secret_change_me_in_production}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      # The API is the single migration owner; workers added later will not set
+      # this, so they cannot race it for the alembic_version row.
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Bind-mount for autoreload during development. Removed in a production
+      # compose file, where the image is immutable.
+      - .:/app
+    entrypoint: ["bash", "/app/scripts/entrypoint.sh"]
+    command:
+      - "uvicorn"
+      - "apps.api.main:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--reload"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
