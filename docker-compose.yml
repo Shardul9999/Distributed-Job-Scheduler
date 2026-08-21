@@ -86,5 +86,40 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  worker:
+    build:
+      context: .
+      target: dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-codity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codity_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-codity}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-10}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-100}
+      WORKER_HEARTBEAT_INTERVAL_S: ${WORKER_HEARTBEAT_INTERVAL_S:-10}
+      WORKER_SHUTDOWN_GRACE_S: ${WORKER_SHUTDOWN_GRACE_S:-30}
+      # Workers never own migrations -- the API applies them. Several replicas
+      # racing for the alembic_version row would deadlock on startup.
+      RUN_MIGRATIONS: "false"
+    volumes:
+      - .:/app
+    entrypoint: ["bash", "/app/scripts/entrypoint.sh"]
+    command: ["python", "-m", "apps.worker.main"]
+    # Docker's default is 10s, which would SIGKILL a worker mid-drain and
+    # strand its jobs until the visibility timeout expired. This must exceed
+    # WORKER_SHUTDOWN_GRACE_S.
+    stop_grace_period: 45s
+    # No container_name: that would prevent `--scale worker=3`.
+    restart: unless-stopped
+
 volumes:
   postgres_data:

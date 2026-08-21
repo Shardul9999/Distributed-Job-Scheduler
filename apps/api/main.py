@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apps.api.core.config import settings
 from apps.api.core.errors import register_exception_handlers
 from apps.api.core.logging import RequestContextMiddleware, configure_logging
-from apps.api.routers import auth, health, organizations, projects
+from apps.api.routers import auth, health, jobs, organizations, projects, queues
 from packages.db import dispose_engine
 
 configure_logging(level=settings.log_level, json_output=settings.is_production)
@@ -76,6 +76,8 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(organizations.router, prefix=settings.api_prefix)
 app.include_router(projects.router, prefix=settings.api_prefix)
+app.include_router(queues.router, prefix=settings.api_prefix)
+app.include_router(jobs.router, prefix=settings.api_prefix)
 
 
 @app.get("/", include_in_schema=False)
