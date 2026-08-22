@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { Dot } from "./ui";
+import { ThemeToggle } from "./ThemeToggle";
 import {
   IconChevron,
   IconDeadLetters,
@@ -107,6 +108,7 @@ export function Sidebar({ connected }: { connected: boolean }) {
       </nav>
 
       <div className="space-y-2.5 border-t border-white/10 px-3 py-3">
+        <ThemeToggle />
         <div className="flex items-center gap-2 text-[11px] text-on-violet-muted">
           <Dot tone={connected ? "ok" : "warn"} pulse={connected} />
           {connected ? "Live" : "Reconnecting…"}

@@ -117,3 +117,32 @@ export function IconChevron(p: IconProps) {
     </Svg>
   );
 }
+
+/** Light mode. */
+export function IconSun(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </Svg>
+  );
+}
+
+/** Dark mode. */
+export function IconMoon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M20 13.5A8.2 8.2 0 0 1 10.5 4a8.5 8.5 0 1 0 9.5 9.5Z" />
+    </Svg>
+  );
+}
+
+/** Follow the operating system. */
+export function IconSystem(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="2.5" y="4" width="19" height="12" rx="2" />
+      <path d="M9 20h6M12 16v4" />
+    </Svg>
+  );
+}

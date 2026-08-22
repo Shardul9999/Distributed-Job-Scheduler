@@ -20,39 +20,75 @@ import {
   YAxis,
 } from "recharts";
 import { clockTime, durationMs } from "@/lib/format";
+import { useTheme } from "@/lib/theme";
 import type {
   JobStatus,
   LatencyResponse,
   ThroughputResponse,
 } from "@/lib/types";
 
-// Mirrors tailwind.config.ts, which in turn mirrors Codity's dashboard tokens.
-// Recharts needs literal values, so these are the one place the palette is
-// duplicated -- keep them in step with the config.
-// Mirrors tailwind.config.ts, which mirrors codity.ai's tokens. Recharts needs
-// literal values, so this is the one place the palette is duplicated -- keep it
-// in step with the config. These are the light-ground variants: saturated
-// enough to carry meaning against near-white without vibrating.
-const GRID = "#e3e3ee";
-const AXIS = "#6e717e";
-const COLORS = {
-  ok: "#12885a",
-  danger: "#d13b30",
-  warn: "#b5711a",
-  info: "#0074d8",
-  brand: "#5055d3",
-};
+// Recharts takes literal colour strings, not CSS classes, so the palette has to
+// exist in JS as well as in the Tailwind config. Resolving it through a hook
+// keyed on the active theme -- rather than as module constants -- is what makes
+// the charts actually repaint when the theme is toggled; constants would be
+// frozen at import time and the charts would keep their first palette forever.
+//
+// Light values are codity.ai's; dark values are Codity's console in dark mode.
+function useChartTheme() {
+  const { theme } = useTheme();
+  const dark = theme === "dark";
 
-const tooltipStyle = {
-  backgroundColor: "#fefdff",
-  border: "1px solid #e3e3ee",
-  borderRadius: 6,
-  fontSize: 12,
-  color: "#1b1e2e",
-  boxShadow: "0 4px 12px rgba(27,30,46,0.08)",
-};
+  const COLORS = dark
+    ? {
+        ok: "#3ec98a",
+        danger: "#ff5b52",
+        warn: "#f5a83c",
+        info: "#2f8eff",
+        brand: "#7a7fe0",
+      }
+    : {
+        ok: "#12885a",
+        danger: "#d13b30",
+        warn: "#b5711a",
+        info: "#0074d8",
+        brand: "#5055d3",
+      };
+
+  const GRID = dark ? "#202020" : "#e3e3ee";
+  const AXIS = dark ? "#8e8e8e" : "#6e717e";
+
+  const DEPTH_COLORS: Partial<Record<JobStatus, string>> = {
+    queued: COLORS.info,
+    scheduled: COLORS.warn,
+    claimed: COLORS.brand,
+    running: COLORS.brand,
+    completed: COLORS.ok,
+    failed: COLORS.danger,
+    dead: COLORS.danger,
+    cancelled: AXIS,
+  };
+
+  return {
+    GRID,
+    AXIS,
+    COLORS,
+    DEPTH_COLORS,
+    // Ink at 5% on light, white at 6% on dark: a hover wash has to contrast
+    // with the ground it sits on, and a single value cannot do both.
+    cursorFill: dark ? "#ffffff0f" : "#1b1e2e0d",
+    tooltipStyle: {
+      backgroundColor: dark ? "#131313" : "#fefdff",
+      border: `1px solid ${dark ? "#303030" : "#e3e3ee"}`,
+      borderRadius: 6,
+      fontSize: 12,
+      color: dark ? "#ededed" : "#1b1e2e",
+      boxShadow: dark ? "none" : "0 4px 12px rgba(27,30,46,0.08)",
+    },
+  };
+}
 
 export function ThroughputChart({ data }: { data: ThroughputResponse }) {
+  const { GRID, AXIS, COLORS, tooltipStyle } = useChartTheme();
   const rows = data.points.map((p) => ({
     t: clockTime(p.bucket),
     succeeded: p.succeeded,
@@ -110,6 +146,7 @@ export function ThroughputChart({ data }: { data: ThroughputResponse }) {
 }
 
 export function LatencyChart({ data }: { data: LatencyResponse }) {
+  const { GRID, AXIS, COLORS, tooltipStyle } = useChartTheme();
   const rows = data.points.map((p) => ({
     t: clockTime(p.bucket),
     p50: p.p50_ms,
@@ -151,22 +188,14 @@ export function LatencyChart({ data }: { data: LatencyResponse }) {
   );
 }
 
-const DEPTH_COLORS: Partial<Record<JobStatus, string>> = {
-  queued: COLORS.info,
-  scheduled: COLORS.warn,
-  claimed: COLORS.brand,
-  running: COLORS.brand,
-  completed: COLORS.ok,
-  failed: COLORS.danger,
-  dead: COLORS.danger,
-  cancelled: AXIS,
-};
 
 export function QueueDepthChart({
   data,
 }: {
   data: Record<JobStatus, number>;
 }) {
+  const { GRID, AXIS, COLORS, DEPTH_COLORS, tooltipStyle, cursorFill } =
+    useChartTheme();
   const rows = (Object.keys(data) as JobStatus[])
     .map((status) => ({ status, count: data[status] }))
     .filter((r) => r.count > 0);
@@ -205,7 +234,7 @@ export function QueueDepthChart({
         />
         {/* Ink at 5%, not white: a white hover wash is invisible on a
             near-white ground. */}
-        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#1b1e2e0d" }} />
+        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: cursorFill }} />
         <Bar dataKey="count" radius={[0, 3, 3, 0]} minPointSize={2}>
           {rows.map((r) => (
             <Cell key={r.status} fill={DEPTH_COLORS[r.status] ?? COLORS.brand} />
@@ -224,6 +253,7 @@ export function QueueDepthChart({
 }
 
 export function Sparkline({ values }: { values: number[] }) {
+  const { GRID, AXIS, COLORS, tooltipStyle } = useChartTheme();
   const rows = values.map((v, i) => ({ i, v }));
   return (
     <ResponsiveContainer width="100%" height={36}>
