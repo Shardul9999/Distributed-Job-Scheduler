@@ -1,11 +1,37 @@
-# Codity — Distributed Job Scheduler
+<div align="center">
 
-A production-inspired distributed job scheduling platform. Jobs are queued in
-PostgreSQL and claimed atomically by a fleet of independent worker processes,
-with configurable retry policies, cron scheduling, dead-letter handling, and
-live fleet observability.
+# ⚡ Codity — Distributed Job Scheduler
 
-Built for the Codity intern technical assessment.
+**A production-inspired distributed job scheduler where PostgreSQL *is* the queue.**
+
+Jobs are claimed atomically by a fleet of independent workers — with retry policies,
+cron scheduling, crash recovery, dead-letter handling, and a live operator dashboard.
+
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Tests](https://img.shields.io/badge/tests-32%20passing-success)](tests/)
+
+</div>
+
+> **The core guarantee:** with 10 workers competing for 500 jobs, every job runs
+> **exactly once** — verified under `kill -9`. No queue library, no Redis, no broker.
+> Just `FOR UPDATE SKIP LOCKED` and fencing tokens.
+
+<div align="center">
+
+| Highlight | |
+|---|---|
+| 🔒 **Exactly-once execution** | `SKIP LOCKED` claiming + `lock_token` fencing |
+| ♻️ **Crash recovery** | heartbeats + reaper revive a dead worker's jobs |
+| ⏰ **Cron scheduling** | IANA timezones, DST-safe, no double-fire |
+| 👑 **Leader election** | `pg_try_advisory_lock`, no lease, no split-brain |
+| 📊 **Live dashboard** | 6 pages, SSE streaming, throughput/latency charts |
+| 🧪 **32 tests** | real PostgreSQL via testcontainers, no mocks |
+
+</div>
 
 ---
 
@@ -111,29 +137,40 @@ header form is.
 
 ## Architecture
 
-Four process types share one PostgreSQL database:
+Four independently deployable process types share one PostgreSQL database:
 
-```
-                    ┌──────────────────────────────┐
-                    │   Next.js dashboard (web)    │
-                    └──────────────┬───────────────┘
-                            REST + SSE
-                                   │
-                    ┌──────────────▼───────────────┐
-                    │   FastAPI  (api)  xN         │  stateless
-                    │   auth · CRUD · enqueue · SSE│
-                    └──────────────┬───────────────┘
-                                   │
-              ┌────────────────────▼────────────────────┐
-              │          PostgreSQL 16                  │  the queue IS the database
-              │   jobs · queues · executions · workers  │
-              └───▲──────────────▲──────────────▲───────┘
-                  │              │              │
-      ┌───────────┴───┐  ┌───────┴───────┐  ┌───┴────────────┐
-      │ worker x3     │  │ scheduler x1  │  │ reaper         │
-      │ claim-run-ack │  │ cron to jobs  │  │ revive orphans │
-      │ heartbeat     │  │ advisory lock │  │                │
-      └───────────────┘  └───────────────┘  └────────────────┘
+```mermaid
+flowchart TB
+    subgraph browser["🌐 Browser"]
+        WEB["<b>Next.js Dashboard</b><br/>6 pages · Recharts · live SSE"]
+    end
+
+    subgraph apitier["🔌 API tier — stateless, scales horizontally"]
+        API["<b>FastAPI</b> × N<br/>58 endpoints · JWT + RBAC<br/>validation · SSE feed"]
+    end
+
+    subgraph datatier["🐘 Data tier — the queue IS the database"]
+        PG[("<b>PostgreSQL 16</b><br/>13 tables · partial indexes<br/>SKIP LOCKED · advisory locks")]
+    end
+
+    subgraph compute["⚙️ Compute tier — independently scalable"]
+        WORKER["<b>worker</b> × N<br/>claim → execute → ack<br/>heartbeat · graceful drain"]
+        SCHED["<b>scheduler</b> × 2<br/>1 leader · 1 standby<br/>cron + reaper"]
+    end
+
+    WEB -->|"REST + SSE"| API
+    API -->|"enqueue · read · aggregate"| PG
+    WORKER <-->|"FOR UPDATE SKIP LOCKED<br/>fenced by lock_token"| PG
+    SCHED <-->|"pg_try_advisory_lock<br/>materialise cron · revive orphans"| PG
+
+    classDef front fill:#0ea5e9,stroke:#0369a1,color:#fff
+    classDef back fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    classDef db fill:#4169E1,stroke:#1e3a8a,color:#fff
+    classDef proc fill:#10b981,stroke:#047857,color:#fff
+    class WEB front
+    class API back
+    class PG db
+    class WORKER,SCHED proc
 ```
 
 **The queue is PostgreSQL itself**, not Redis or a message broker. Jobs are
@@ -150,6 +187,71 @@ LIMIT :n
 `SKIP LOCKED` makes competing workers step over rows another transaction already
 holds, so N workers claim N disjoint batches with no contention and no blocking.
 Full reasoning in [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md).
+
+### How exactly-once survives a concurrent fleet
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Worker A
+    participant B as Worker B
+    participant PG as PostgreSQL
+
+    par Concurrent claims
+        A->>PG: CLAIM · FOR UPDATE SKIP LOCKED
+    and
+        B->>PG: CLAIM · FOR UPDATE SKIP LOCKED
+    end
+    PG-->>A: jobs 1-10 · lock_token = α
+    PG-->>B: jobs 11-20 · lock_token = β
+    Note over A,B: Disjoint sets — B steps over A's locked rows
+
+    A->>A: execute handler
+    A--xA: 💥 process dies mid-job
+    Note over PG: heartbeat goes silent
+
+    PG->>PG: reaper: worker dead → job LOST<br/>requeue · lock_token = NULL
+    PG-->>B: job 1 reclaimed · lock_token = γ
+    B->>PG: complete WHERE lock_token = γ ✅
+
+    Note over A: zombie A revives, reports success
+    A->>PG: complete WHERE lock_token = α
+    PG-->>A: 0 rows matched — discarded 🛡️
+```
+
+The last two steps are the point: a revived zombie holds a **stale token**, so its
+write matches zero rows. Recovery without fencing would just be a slower path to
+running a job twice.
+
+### Job lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued: enqueue
+    [*] --> scheduled: delayed / cron
+
+    scheduled --> queued: run_at reached
+    queued --> claimed: atomic claim
+    claimed --> running: handler starts
+
+    running --> completed: ✅ success
+    running --> queued: 🔁 retry with backoff
+    running --> dead: ☠️ attempts exhausted → DLQ
+
+    claimed --> queued: ♻️ reaper (worker died)
+    running --> queued: ♻️ reaper (worker died)
+
+    queued --> cancelled: operator cancels
+    dead --> queued: DLQ replay (new job)
+
+    completed --> [*]
+    cancelled --> [*]
+```
+
+Two failure paths, deliberately asymmetric: a **handler that raised** consumes a
+retry and backs off; a **worker that vanished** also consumes the attempt, because
+a lost job may have had side effects. A job *released* during graceful shutdown is
+refunded — it never ran.
 
 ---
 
@@ -197,9 +299,9 @@ apps/
     routers/      one module per resource group
     schemas/      Pydantic request/response contracts
     services/     business logic (routers stay thin)
-  worker/         claim loop, executors, heartbeat        [Day 1]
-  scheduler/      cron materialization, reaper            [Day 2]
-  web/            Next.js dashboard                       [Day 3]
+  worker/         claim loop, executor, handlers, heartbeat
+  scheduler/      leader election, cron materialization, reaper
+  web/            Next.js dashboard (frontend)
 packages/
   db/             SQLAlchemy models, enums, session, Alembic migrations
 tests/            pytest suite, incl. the 10-worker concurrency test
