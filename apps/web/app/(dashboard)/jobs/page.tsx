@@ -169,7 +169,7 @@ function JobDetail({
             {logs.length === 0 ? (
               <div className="text-sm text-muted">No log lines.</div>
             ) : (
-              <div className="max-h-64 space-y-1 overflow-auto rounded-lg border border-border bg-bg p-3 font-mono text-xs">
+              <div className="max-h-64 space-y-1 overflow-auto rounded-lg border border-border bg-head p-3 font-mono text-xs">
                 {logs.map((l) => (
                   <div key={l.id} className="flex gap-2">
                     <span className="text-muted">

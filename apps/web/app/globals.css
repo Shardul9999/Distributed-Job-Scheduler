@@ -3,76 +3,86 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
 body {
-  background-color: #090909;
-  color: #ededed;
-  /* Codity sets slightly tightened tracking on UI text; it is most of what
+  background-color: #fafafe;
+  color: #1b1e2e;
+  /* codity.ai runs slightly tightened tracking on UI text; it is most of what
      makes Archivo read as theirs rather than as a generic grotesque. */
   letter-spacing: -0.011em;
 }
 
-/* Thin, unobtrusive scrollbars that match the near-black surface. */
+/* Thin scrollbars tuned for the near-white ground. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #303030 transparent;
+  scrollbar-color: #c9c9d8 transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #303030;
+  background: #c9c9d8;
   border-radius: 6px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #3d3d3d;
+  background: #b3b3c6;
+}
+
+/* The sidebar sits on Codity's deep-violet gradient, so its scrollbar needs
+   the inverse treatment or it disappears into the panel. */
+.on-violet-scroll {
+  scrollbar-color: #ffffff33 transparent;
+}
+.on-violet-scroll::-webkit-scrollbar-thumb {
+  background: #ffffff33;
 }
 
 @layer components {
   .card {
-    @apply rounded-lg border border-border bg-panel;
+    /* A hairline plus the faintest lift. On a near-white ground a card needs
+       *some* separation, but a heavy shadow would look dated next to Codity's
+       flat marketing surfaces. */
+    @apply rounded-lg border border-border bg-panel
+      shadow-[0_1px_2px_rgba(27,30,46,0.04)];
   }
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded border border-border
-      bg-panel2 px-3 py-1.5 text-sm font-medium text-fg transition-colors duration-150
-      hover:border-strong hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50;
+      bg-panel px-3 py-1.5 text-sm font-medium text-fg transition-colors duration-150
+      hover:border-strong hover:bg-panel2 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-brand {
     @apply border-transparent bg-brand text-white hover:bg-brand-hover
       active:bg-brand-active;
   }
   .btn-danger {
-    @apply border-transparent bg-danger/90 text-white hover:bg-danger;
+    @apply border-transparent bg-danger text-white hover:bg-danger/90;
   }
   .input {
-    @apply rounded border border-border bg-panel2 px-3 py-1.5 text-sm text-fg
+    @apply rounded border border-border bg-panel px-3 py-1.5 text-sm text-fg
       outline-none transition-colors placeholder:text-faint
-      focus:border-brand focus:ring-1 focus:ring-brand/40;
+      focus:border-brand focus:ring-2 focus:ring-brand/20;
   }
+
   /* Tables are the densest surface in the app and where an operator spends
-     most of their time, so headers are quiet and rows are tight. The header
-     sits on --bg-head with a hairline under it, matching Codity's console. */
+     most of their time: quiet headers, tight rows, hairline separation. */
   .th {
     @apply border-b border-border bg-head px-3 py-2 text-left text-[10px]
-      font-semibold uppercase tracking-[0.08em] text-faint;
+      font-semibold uppercase tracking-[0.08em] text-muted;
   }
   .td {
     @apply px-3 py-[9px] text-[13px];
   }
-  /* Row separation by hairline rather than by zebra striping: striping fights
-     the status badges for attention. */
   .row {
     @apply border-b border-subtle transition-colors duration-100 last:border-0
-      hover:bg-panel2/50;
+      hover:bg-head;
   }
 
-  /* Machine-written values -- ids, cron expressions, tokens, durations -- are
-     set in JetBrains Mono so they are visually separable from prose at a
-     glance. Codity does the same throughout their dashboard. */
+  /* Machine-written values -- ids, cron expressions, durations -- in JetBrains
+     Mono, so they are separable from prose at a glance. Codity does the same. */
   .mono {
     @apply font-mono text-[0.8125rem] tracking-tight;
   }

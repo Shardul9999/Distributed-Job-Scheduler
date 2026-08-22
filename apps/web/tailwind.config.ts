@@ -1,13 +1,13 @@
 import type { Config } from "tailwindcss";
 
-// Palette and shape are taken from Codity's own product dashboard
-// (dashboard.codity.ai) so this tool reads as part of the same family: near-black
-// layered surfaces, a single blue accent reserved for actions, and colour used
-// only to carry state -- green healthy, amber waiting, red failed.
+// Palette taken from codity.ai's own stylesheet, not approximated by eye.
 //
-// The values below are Codity's design tokens verbatim (their `--bg-*`,
-// `--border-*`, `--text-*`, `--accent*` and `--status-*` custom properties in
-// dark mode), not an approximation by eye.
+// Surfaces and type are their marketing-site tokens (`--paper` #fafafe,
+// `--paper-raised`, `--paper-sunk`, and the `--ink` scale), the accent is their
+// `--accent` indigo, and the sidebar carries their signature deep-violet
+// gradient. Status colours come from Codity's own console in *light* mode --
+// the marketing site has no error/success palette, and these are tuned for
+// contrast on a near-white ground, which their brand violets are not.
 const config: Config = {
   content: [
     "./app/**/*.{ts,tsx}",
@@ -17,40 +17,55 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Surfaces, darkest to lightest: page, card, raised control.
-        bg: "#090909", // --bg-app
-        panel: "#0d0d0d", // --bg-surface
-        head: "#121212", // --bg-head   (table headers, sidebar)
-        inset: "#131313", // --bg-inset  (code blocks, wells)
-        panel2: "#191919", // --bg-raised (buttons, inputs)
-        raised: "#222222", // --bg-raised-hover
+        // Surfaces, from page to raised control.
+        bg: "#fafafe", // --paper
+        panel: "#fefdff", // --paper-raised  (cards)
+        head: "#f2f2f9", // --paper-sunk    (table headers, wells)
+        inset: "#f2f2f9",
+        panel2: "#f2f2f9", // inputs, secondary buttons
+        raised: "#e9e9f2", // their hover state
 
-        // Hairlines. `border` is the default; the other two are deliberate.
-        border: "#202020",
-        subtle: "#1a1a1a",
-        strong: "#303030",
+        // Hairlines, derived to sit between paper and paper-sunk.
+        border: "#e3e3ee",
+        subtle: "#eeeef5",
+        strong: "#c9c9d8",
 
-        // Type.
-        fg: "#ededed", // --text-primary
-        muted: "#8e8e8e", // --text-secondary
-        faint: "#7d7d7d", // --text-tertiary
+        // Type -- the --ink scale.
+        fg: "#1b1e2e", // --ink
+        muted: "#6e717e", // --ink-3
+        faint: "#9698a2", // --ink-4
 
-        // One accent, used only for primary actions and active nav.
-        brand: "#0075ff", // --accent
-        "brand-hover": "#2f8eff", // --accent-hover
-        "brand-active": "#0063db", // --accent-active
+        // Codity indigo. Deepens on press rather than lightening, which is how
+        // their own CTAs behave.
+        brand: "#5055d3", // --accent
+        "brand-hover": "#4335a8", // --accent-deep
+        "brand-active": "#3a2f92",
 
-        // State. Never decorative.
-        ok: "#3ec98a", // --status-success
-        danger: "#ff5b52", // --status-error
-        warn: "#f5a83c", // --status-warning
-        info: "#2f8eff",
-        neutral: "#8e8e8e", // --status-neutral
+        // Their deeper brand tones, used for the sidebar gradient and charts.
+        "brand-violet": "#421f7f",
+        "brand-mid": "#3b3db5",
+        "brand-blue": "#0074d8",
+        "brand-ink": "#0e172f",
+
+        // State. Legible on near-white; never decorative.
+        ok: "#12885a",
+        danger: "#d13b30",
+        warn: "#b5711a",
+        info: "#0074d8",
+        neutral: "#5f5f5f",
+
+        // Sidebar ink, for text sitting on the violet gradient.
+        "on-violet": "#f4f3fb",
+        "on-violet-muted": "#b9b4d8",
       },
-      // Codity's radii are tight (3-6px). Sharp corners read as precise and
-      // technical, which is the register an operations console wants.
+      backgroundImage: {
+        // codity.ai's hero/section gradient, verbatim.
+        "brand-gradient":
+          "linear-gradient(100deg,#2c0d56 0%,#281060 46%,#1a1869 100%)",
+      },
+      // Codity's radii are tight (0-6px). Sharp corners read as precise.
       borderRadius: {
-        sm: "3px",
+        sm: "2px",
         DEFAULT: "4px",
         md: "4px",
         lg: "6px",
@@ -62,8 +77,7 @@ const config: Config = {
         mono: ["var(--font-jetbrains)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       transitionTimingFunction: {
-        // Codity's --ease-out-expo.
-        expo: "cubic-bezier(.16, 1, .3, 1)",
+        expo: "cubic-bezier(.16, 1, .3, 1)", // their --ease-out-expo
       },
     },
   },

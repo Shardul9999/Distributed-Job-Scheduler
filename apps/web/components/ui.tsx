@@ -195,7 +195,7 @@ export function Drawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-brand-ink/40 backdrop-blur-[1px]"
         onClick={onClose}
         aria-hidden
       />
@@ -223,7 +223,7 @@ export function KeyValue({ label, children }: { label: string; children: ReactNo
 
 export function Json({ value }: { value: unknown }) {
   return (
-    <pre className="max-h-64 overflow-auto rounded-lg border border-border bg-bg p-3 text-xs text-fg">
+    <pre className="max-h-64 overflow-auto rounded-lg border border-border bg-head p-3 text-xs text-fg">
       {JSON.stringify(value, null, 2)}
     </pre>
   );

@@ -29,21 +29,27 @@ import type {
 // Mirrors tailwind.config.ts, which in turn mirrors Codity's dashboard tokens.
 // Recharts needs literal values, so these are the one place the palette is
 // duplicated -- keep them in step with the config.
-const GRID = "#202020";
-const AXIS = "#8e8e8e";
+// Mirrors tailwind.config.ts, which mirrors codity.ai's tokens. Recharts needs
+// literal values, so this is the one place the palette is duplicated -- keep it
+// in step with the config. These are the light-ground variants: saturated
+// enough to carry meaning against near-white without vibrating.
+const GRID = "#e3e3ee";
+const AXIS = "#6e717e";
 const COLORS = {
-  ok: "#3ec98a",
-  danger: "#ff5b52",
-  warn: "#f5a83c",
-  info: "#2f8eff",
-  brand: "#0075ff",
+  ok: "#12885a",
+  danger: "#d13b30",
+  warn: "#b5711a",
+  info: "#0074d8",
+  brand: "#5055d3",
 };
 
 const tooltipStyle = {
-  backgroundColor: "#131313",
-  border: "1px solid #303030",
+  backgroundColor: "#fefdff",
+  border: "1px solid #e3e3ee",
   borderRadius: 6,
   fontSize: 12,
+  color: "#1b1e2e",
+  boxShadow: "0 4px 12px rgba(27,30,46,0.08)",
 };
 
 export function ThroughputChart({ data }: { data: ThroughputResponse }) {
@@ -197,7 +203,9 @@ export function QueueDepthChart({
           width={74}
           tickLine={false}
         />
-        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#ffffff08" }} />
+        {/* Ink at 5%, not white: a white hover wash is invisible on a
+            near-white ground. */}
+        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#1b1e2e0d" }} />
         <Bar dataKey="count" radius={[0, 3, 3, 0]} minPointSize={2}>
           {rows.map((r) => (
             <Cell key={r.status} fill={DEPTH_COLORS[r.status] ?? COLORS.brand} />

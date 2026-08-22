@@ -29,39 +29,49 @@ export function Sidebar({ connected }: { connected: boolean }) {
   const { me, projects, projectId, setProjectId, logout } = useAuth();
 
   return (
-    <aside className="flex h-screen w-60 flex-col border-r border-border bg-head">
-      {/* Brand. The wordmark sits on the same baseline grid as the nav below
-          so the whole rail reads as one column. */}
+    // codity.ai pairs near-white content with deep-violet panels; this rail is
+    // that panel, using their gradient verbatim. It is also what makes the
+    // dashboard read as Codity's at a glance rather than as a generic console.
+    <aside className="on-violet-scroll flex h-screen w-60 flex-col bg-brand-gradient text-on-violet">
       <div className="flex items-center gap-2.5 px-4 py-4">
-        <span className="flex h-7 w-7 items-center justify-center rounded bg-brand text-[13px] font-bold text-white">
+        <span className="flex h-7 w-7 items-center justify-center rounded bg-white/95 text-[13px] font-bold text-brand-ink">
           C
         </span>
         <div className="leading-none">
           <div className="text-[13px] font-semibold tracking-tight">Codity</div>
-          <div className="mt-1 text-[11px] text-faint">Job Scheduler</div>
+          <div className="mt-1 text-[11px] text-on-violet-muted">
+            Job Scheduler
+          </div>
         </div>
       </div>
 
       <div className="px-3 pb-3">
-        <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.08em] text-faint">
+        <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.08em] text-on-violet-muted">
           Project
         </label>
-        {/* Native select, custom chevron: the browser's default arrow is the
-            one element that cannot be themed and gave the rail away. */}
+        {/* Translucent rather than white: a solid input would punch a hole in
+            the gradient. Native select with a custom chevron, because the
+            browser's own arrow cannot be themed. */}
         <div className="relative">
           <select
-            className="input w-full appearance-none pr-8"
+            className="w-full appearance-none rounded border border-white/15 bg-white/10 px-3 py-1.5 pr-8
+              text-sm text-on-violet outline-none transition-colors
+              hover:bg-white/[0.14] focus:border-white/40"
             value={projectId ?? ""}
             onChange={(e) => setProjectId(e.target.value)}
           >
-            {projects.length === 0 && <option value="">No projects</option>}
+            {projects.length === 0 && (
+              <option value="" className="text-fg">
+                No projects
+              </option>
+            )}
             {projects.map((p) => (
-              <option key={p.id} value={p.id}>
+              <option key={p.id} value={p.id} className="text-fg">
                 {p.name}
               </option>
             ))}
           </select>
-          <IconChevron className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
+          <IconChevron className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-on-violet-muted" />
         </div>
       </div>
 
@@ -76,20 +86,18 @@ export function Sidebar({ connected }: { connected: boolean }) {
               aria-current={active ? "page" : undefined}
               className={`group relative flex items-center gap-2.5 rounded px-2.5 py-[7px] text-[13px] transition-colors duration-150 ${
                 active
-                  ? "bg-panel2 font-medium text-fg"
-                  : "text-muted hover:bg-panel2/60 hover:text-fg"
+                  ? "bg-white/[0.14] font-medium text-white"
+                  : "text-on-violet-muted hover:bg-white/[0.07] hover:text-on-violet"
               }`}
             >
-              {/* A 2px accent rail rather than a filled block: it marks the
-                  active route without competing with the data on the right. */}
               <span
-                className={`absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-brand transition-opacity ${
+                className={`absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-white transition-opacity ${
                   active ? "opacity-100" : "opacity-0"
                 }`}
               />
               <Icon
                 className={`h-[15px] w-[15px] shrink-0 transition-colors ${
-                  active ? "text-brand" : "text-faint group-hover:text-muted"
+                  active ? "text-white" : "text-on-violet-muted group-hover:text-on-violet"
                 }`}
               />
               {label}
@@ -98,18 +106,23 @@ export function Sidebar({ connected }: { connected: boolean }) {
         })}
       </nav>
 
-      <div className="space-y-2.5 border-t border-subtle px-3 py-3">
-        <div className="flex items-center gap-2 text-[11px] text-muted">
+      <div className="space-y-2.5 border-t border-white/10 px-3 py-3">
+        <div className="flex items-center gap-2 text-[11px] text-on-violet-muted">
           <Dot tone={connected ? "ok" : "warn"} pulse={connected} />
           {connected ? "Live" : "Reconnecting…"}
         </div>
         <div
-          className="truncate text-[11px] text-faint"
+          className="truncate text-[11px] text-on-violet-muted"
           title={me?.user.email}
         >
           {me?.user.full_name ?? me?.user.email ?? "—"}
         </div>
-        <button className="btn w-full justify-center gap-2" onClick={logout}>
+        <button
+          className="inline-flex w-full items-center justify-center gap-2 rounded border border-white/15
+            bg-white/10 px-3 py-1.5 text-sm font-medium text-on-violet transition-colors
+            hover:bg-white/[0.16]"
+          onClick={logout}
+        >
           <IconSignOut className="h-3.5 w-3.5" />
           Sign out
         </button>

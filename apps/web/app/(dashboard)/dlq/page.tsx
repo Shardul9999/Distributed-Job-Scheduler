@@ -116,7 +116,7 @@ function DlqDetail({
             <div className="mb-1 text-xs uppercase tracking-wide text-muted">
               Stack trace
             </div>
-            <pre className="max-h-72 overflow-auto rounded-lg border border-border bg-bg p-3 text-xs">
+            <pre className="max-h-72 overflow-auto rounded-lg border border-border bg-head p-3 text-xs">
               {entry.error_stack}
             </pre>
           </div>
