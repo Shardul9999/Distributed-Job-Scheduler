@@ -180,7 +180,7 @@ export default function DlqPage() {
                 {dlq.data.items.map((e) => (
                   <tr
                     key={e.id}
-                    className="cursor-pointer border-t border-border hover:bg-panel2"
+                    className="row cursor-pointer"
                     onClick={() => setSelected(e)}
                   >
                     <td className="td font-medium">{e.job_type}</td>

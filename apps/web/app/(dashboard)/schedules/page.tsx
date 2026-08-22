@@ -38,7 +38,7 @@ export default function SchedulesPage() {
               </thead>
               <tbody>
                 {schedules.data.map((s) => (
-                  <tr key={s.id} className="border-t border-border">
+                  <tr key={s.id} className="row">
                     <td className="td font-medium">{s.name}</td>
                     <td className="td font-mono text-xs">{s.cron_expression}</td>
                     <td className="td text-xs text-muted">{s.timezone}</td>

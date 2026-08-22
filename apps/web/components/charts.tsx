@@ -11,6 +11,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -170,17 +171,44 @@ export function QueueDepthChart({
       </div>
     );
   }
+  // Horizontal, with the count printed on each row.
+  //
+  // Job counts span orders of magnitude in normal operation -- a few thousand
+  // completed against a handful dead -- and on a shared linear vertical axis
+  // that renders every interesting bar as a one-pixel smear beside one huge
+  // one. Turning the bars horizontal gives the labels room and printing the
+  // value means a category is still legible when its bar is too short to see,
+  // which is exactly the case an operator cares about most.
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={rows} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-        <CartesianGrid stroke={GRID} vertical={false} />
-        <XAxis dataKey="status" stroke={AXIS} tick={{ fontSize: 11 }} />
-        <YAxis stroke={AXIS} tick={{ fontSize: 11 }} allowDecimals={false} />
+      <BarChart
+        data={rows}
+        layout="vertical"
+        margin={{ top: 4, right: 44, left: 8, bottom: 4 }}
+        barCategoryGap={10}
+      >
+        <CartesianGrid stroke={GRID} horizontal={false} />
+        <XAxis type="number" stroke={AXIS} tick={{ fontSize: 11 }} allowDecimals={false} />
+        <YAxis
+          type="category"
+          dataKey="status"
+          stroke={AXIS}
+          tick={{ fontSize: 11 }}
+          width={74}
+          tickLine={false}
+        />
         <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#ffffff08" }} />
-        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+        <Bar dataKey="count" radius={[0, 3, 3, 0]} minPointSize={2}>
           {rows.map((r) => (
             <Cell key={r.status} fill={DEPTH_COLORS[r.status] ?? COLORS.brand} />
           ))}
+          <LabelList
+            dataKey="count"
+            position="right"
+            fill={AXIS}
+            fontSize={11}
+            formatter={(v: number) => v.toLocaleString()}
+          />
         </Bar>
       </BarChart>
     </ResponsiveContainer>

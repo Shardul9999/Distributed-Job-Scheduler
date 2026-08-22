@@ -12,6 +12,7 @@ import {
   PageHeader,
   Spinner,
 } from "@/components/ui";
+import { IconChevron } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
 import { useJobDetail, useJobMutations, useJobs, useQueues } from "@/lib/hooks";
 import { durationMs, relativeTime, shortId } from "@/lib/format";
@@ -283,7 +284,7 @@ export default function JobsPage() {
                 {jobs.data.items.map((job) => (
                   <tr
                     key={job.id}
-                    className="cursor-pointer border-t border-border hover:bg-panel2"
+                    className="row cursor-pointer"
                     onClick={() => setSelected(job.id)}
                   >
                     <td className="td font-mono">{shortId(job.id)}</td>
@@ -311,7 +312,8 @@ export default function JobsPage() {
           disabled={cursorStack.length === 0}
           onClick={() => setCursorStack((s) => s.slice(0, -1))}
         >
-          ← Prev
+          <IconChevron className="h-3.5 w-3.5 rotate-90" />
+          Prev
         </button>
         <span className="text-xs text-muted">
           page {cursorStack.length + 1}
@@ -324,7 +326,8 @@ export default function JobsPage() {
             setCursorStack((s) => [...s, jobs.data!.next_cursor!])
           }
         >
-          Next →
+          Next
+          <IconChevron className="h-3.5 w-3.5 -rotate-90" />
         </button>
       </div>
 

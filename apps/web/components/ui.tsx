@@ -29,23 +29,34 @@ export function StatTile({
   sub?: ReactNode;
   tone?: "default" | "ok" | "warn" | "danger" | "info";
 }) {
-  const toneColor = {
-    default: "text-fg",
-    ok: "text-ok",
-    warn: "text-warn",
-    danger: "text-danger",
-    info: "text-info",
+  // The number itself stays in primary text and a small dot carries the state.
+  // Colouring every headline figure -- as this did -- means colour stops
+  // signalling anything: four coloured numbers side by side read as decoration,
+  // and a genuinely alarming one no longer stands out. Codity's own console
+  // reserves colour for indicators, not for the figures.
+  const dotTone = {
+    default: null,
+    ok: "bg-ok",
+    warn: "bg-warn",
+    danger: "bg-danger",
+    info: "bg-brand",
   }[tone];
+
   return (
-    <Card className="p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted">
-        {label}
+    <Card className="p-4 transition-colors duration-150 hover:border-strong">
+      <div className="flex items-center gap-1.5">
+        {dotTone && (
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotTone}`} />
+        )}
+        <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-faint">
+          {label}
+        </div>
       </div>
-      <div className={`mt-1 text-2xl font-semibold tabular-nums ${toneColor}`}>
+      <div className="mt-2 text-[26px] font-semibold leading-none tracking-tight tabular-nums text-fg">
         {value}
       </div>
       {sub !== undefined && (
-        <div className="mt-1 text-xs text-muted">{sub}</div>
+        <div className="mt-2 text-[11px] text-muted">{sub}</div>
       )}
     </Card>
   );
@@ -105,14 +116,32 @@ export function WorkerStatusBadge({ status }: { status: WorkerStatusValue }) {
   return <Badge className={WORKER_STATUS_TONE[status]}>{status}</Badge>;
 }
 
-export function Dot({ tone }: { tone: "ok" | "warn" | "danger" | "muted" }) {
+export function Dot({
+  tone,
+  pulse = false,
+}: {
+  tone: "ok" | "warn" | "danger" | "muted";
+  pulse?: boolean;
+}) {
   const c = {
     ok: "bg-ok",
     warn: "bg-warn",
     danger: "bg-danger",
     muted: "bg-muted",
   }[tone];
-  return <span className={`inline-block h-2 w-2 rounded-full ${c}`} />;
+  // A halo that breathes, rather than the dot itself blinking: it reads as
+  // "connected and receiving" in peripheral vision without pulling the eye off
+  // the data every second.
+  return (
+    <span className="relative inline-flex h-2 w-2 shrink-0">
+      {pulse && (
+        <span
+          className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${c}`}
+        />
+      )}
+      <span className={`relative inline-flex h-2 w-2 rounded-full ${c}`} />
+    </span>
+  );
 }
 
 export function Spinner() {
@@ -139,11 +168,11 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex items-start justify-between gap-4">
+    <div className="mb-5 flex items-start justify-between gap-4 border-b border-subtle pb-4">
       <div>
-        <h1 className="text-xl font-semibold">{title}</h1>
+        <h1 className="text-[19px] font-semibold tracking-tight">{title}</h1>
         {description && (
-          <p className="mt-1 text-sm text-muted">{description}</p>
+          <p className="mt-1 text-[13px] text-muted">{description}</p>
         )}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}

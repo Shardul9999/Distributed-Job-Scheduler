@@ -53,11 +53,21 @@ body {
       outline-none transition-colors placeholder:text-faint
       focus:border-brand focus:ring-1 focus:ring-brand/40;
   }
+  /* Tables are the densest surface in the app and where an operator spends
+     most of their time, so headers are quiet and rows are tight. The header
+     sits on --bg-head with a hairline under it, matching Codity's console. */
   .th {
-    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted;
+    @apply border-b border-border bg-head px-3 py-2 text-left text-[10px]
+      font-semibold uppercase tracking-[0.08em] text-faint;
   }
   .td {
-    @apply px-3 py-2 text-sm;
+    @apply px-3 py-[9px] text-[13px];
+  }
+  /* Row separation by hairline rather than by zebra striping: striping fights
+     the status badges for attention. */
+  .row {
+    @apply border-b border-subtle transition-colors duration-100 last:border-0
+      hover:bg-panel2/50;
   }
 
   /* Machine-written values -- ids, cron expressions, tokens, durations -- are

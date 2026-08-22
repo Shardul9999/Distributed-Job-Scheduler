@@ -17,7 +17,7 @@ function QueueRow({ queue }: { queue: Queue }) {
   const busy = pause.isPending || resume.isPending;
 
   return (
-    <tr className="border-t border-border">
+    <tr className="row">
       <td className="td">
         <div className="font-medium">{queue.name}</div>
         <div className="text-xs text-muted">

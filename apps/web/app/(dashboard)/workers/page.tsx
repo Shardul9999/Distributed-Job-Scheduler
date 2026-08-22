@@ -90,7 +90,7 @@ export default function WorkersPage() {
               </thead>
               <tbody>
                 {workers.data.map((w) => (
-                  <tr key={w.id} className="border-t border-border">
+                  <tr key={w.id} className="row">
                     <td className="td">
                       <div className="font-medium">{w.hostname}</div>
                       <div className="font-mono text-xs text-muted">
