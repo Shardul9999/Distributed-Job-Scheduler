@@ -174,16 +174,34 @@ WHERE id = :job_id AND lock_token = :lock_token
 RETURNING id
 """)
 
-#: Terminal failure: attempts exhausted. Day 2 pairs this with a
-#: dead_letter_queue insert in the same transaction.
+#: Terminal failure: attempts exhausted.
+#:
+#: The status change and the dead_letter_queue insert are one statement, and
+#: therefore one transaction. Written as two statements there would be a window
+#: -- a worker crash, a connection reset -- in which a job is terminally `dead`
+#: with no dead-letter record, which is the one state an operator can neither
+#: see nor replay. Chaining them through a CTE makes that state unreachable.
+#:
+#: The DLQ row *copies* the payload rather than joining to it, so the record
+#: stays readable after a retention policy prunes the originating job.
 EXHAUST_SQL = text("""
-UPDATE jobs
-SET status       = 'dead',
-    completed_at = now(),
-    last_error   = :error,
-    lock_token   = NULL,
-    updated_at   = now()
-WHERE id = :job_id AND lock_token = :lock_token
+WITH dead AS (
+    UPDATE jobs
+    SET status       = 'dead',
+        completed_at = now(),
+        last_error   = :error,
+        lock_token   = NULL,
+        updated_at   = now()
+    WHERE id = :job_id AND lock_token = :lock_token
+    RETURNING id, queue_id, job_type, payload, attempt
+)
+INSERT INTO dead_letter_queue (
+    job_id, queue_id, job_type, original_payload,
+    failure_reason, error_stack, total_attempts, died_at
+)
+SELECT d.id, d.queue_id, d.job_type, d.payload,
+       :error, :error_stack, d.attempt, now()
+FROM dead d
 RETURNING id
 """)
 
@@ -252,12 +270,27 @@ async def retry_job(
 
 
 async def exhaust_job(
-    db: AsyncSession, job_id: uuid.UUID, lock_token: uuid.UUID, error: str
+    db: AsyncSession,
+    job_id: uuid.UUID,
+    lock_token: uuid.UUID,
+    error: str,
+    error_stack: str | None = None,
 ) -> bool:
-    """Mark a job permanently dead after its final attempt."""
+    """Mark a job permanently dead and dead-letter it, atomically.
+
+    Returns False when the fencing token no longer matches. Note what that
+    means for the CTE: the `dead` arm produces no rows, so the INSERT selects
+    from an empty set and writes nothing. A zombie worker cannot dead-letter a
+    job that has already been revived and handed to someone else.
+    """
     row = await db.execute(
         EXHAUST_SQL,
-        {"job_id": job_id, "lock_token": lock_token, "error": error[:8000]},
+        {
+            "job_id": job_id,
+            "lock_token": lock_token,
+            "error": error[:8000],
+            "error_stack": error_stack[:16000] if error_stack else None,
+        },
     )
     ok = row.first() is not None
     await db.commit()

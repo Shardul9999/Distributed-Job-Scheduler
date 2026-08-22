@@ -4,6 +4,12 @@ Implements the three curves the assignment names: fixed delay, linear backoff,
 and exponential backoff. Kept as a pure function of (strategy, attempt) with no
 I/O so the delay maths is directly unit-testable -- see
 tests/test_retry_backoff.py.
+
+Lives in `packages/` rather than in the worker because two processes need it:
+the worker, when a handler raises, and the reaper, when it recovers a job whose
+worker died mid-attempt. Both must produce the same backoff -- a job lost to a
+crashed machine should not retry on a different schedule from one that failed
+in application code.
 """
 
 from __future__ import annotations

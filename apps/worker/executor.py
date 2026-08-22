@@ -14,7 +14,7 @@ import structlog
 from sqlalchemy import insert, select
 
 from apps.worker.handlers import UnknownJobTypeError, get_handler
-from apps.worker.retry import compute_delay_seconds
+from packages.retry import compute_delay_seconds
 from packages.db import JobExecution, JobLog, Queue, RetryPolicy, session_scope
 from packages.db.claim import complete_job, exhaust_job, mark_running, retry_job
 from packages.db.enums import ExecutionStatus, LogLevel
@@ -203,8 +203,14 @@ async def execute_job(job: dict[str, Any], worker_id: uuid.UUID, pool) -> str:
 
     # Failure: retry with backoff, or exhaust.
     if attempt >= max_attempts:
+        # One statement marks the job dead and writes its dead-letter record.
+        # The stack goes with it: an operator triaging the DLQ needs the
+        # traceback of the *final* attempt, and the job row has nowhere to keep
+        # one.
         async with session_scope() as db:
-            await exhaust_job(db, job_id, lock_token, error_message or "failed")
+            await exhaust_job(
+                db, job_id, lock_token, error_message or "failed", error_stack
+            )
         bound.error("job.exhausted", attempts=attempt)
         return "dead"
 

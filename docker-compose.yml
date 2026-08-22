@@ -121,5 +121,52 @@ services:
     # No container_name: that would prevent `--scale worker=3`.
     restart: unless-stopped
 
+  scheduler:
+    build:
+      context: .
+      target: dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-codity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codity_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-codity}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Cron resolution. One second is the finest a five-field cron expression
+      # can express, so ticking faster would only add load.
+      SCHEDULER_TICK_MS: ${SCHEDULER_TICK_MS:-1000}
+      # How long a standby waits before trying for the leader lock again.
+      SCHEDULER_LOCK_RETRY_S: ${SCHEDULER_LOCK_RETRY_S:-5}
+      # Reaper cadence. Must be well below the shortest visibility timeout,
+      # or a job can sit orphaned for longer than its queue promised.
+      REAPER_INTERVAL_S: ${REAPER_INTERVAL_S:-15}
+      # A worker missing this many seconds of heartbeats is declared dead. Six
+      # times WORKER_HEARTBEAT_INTERVAL_S: long enough that a GC pause or a
+      # brief database blip does not evict a healthy worker, short enough that
+      # a real crash is recovered inside a minute.
+      WORKER_HEARTBEAT_TIMEOUT_S: ${WORKER_HEARTBEAT_TIMEOUT_S:-60}
+      HEARTBEAT_RETENTION_HOURS: ${HEARTBEAT_RETENTION_HOURS:-24}
+      RUN_MIGRATIONS: "false"
+    volumes:
+      - .:/app
+    entrypoint: ["bash", "/app/scripts/entrypoint.sh"]
+    command: ["python", "-m", "apps.scheduler.main"]
+    # Two replicas by default, and that is the point: only one wins
+    # pg_try_advisory_lock, the other logs `scheduler.standby` and waits. Kill
+    # the leader and the standby takes over within SCHEDULER_LOCK_RETRY_S,
+    # because the lock dies with the leader's database session.
+    deploy:
+      replicas: 2
+    # No container_name, for the same reason as the worker: it would block
+    # scaling to more than one replica.
+    stop_grace_period: 15s
+    restart: unless-stopped
+
 volumes:
   postgres_data:

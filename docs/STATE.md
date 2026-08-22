@@ -3,7 +3,7 @@
 **Read this first when resuming work.** It records exactly where the build is,
 what is verified, and what comes next. Updated at the end of each day.
 
-Last updated: **21 Aug 2026 — Day 1 COMPLETE**
+Last updated: **22 Aug 2026 — Day 2 COMPLETE**
 
 ---
 
@@ -121,26 +121,96 @@ works.
 - SIGTERM with 5 in flight -> `finished=5, abandoned=0`, clean `stopped`
 - 27 jobs total, all completed, **0 duplicate attempts**
 
-**Known gap (Day 2):** `exhaust_job` marks a job `dead` but does not yet write
-the `dead_letter_queue` row. Pair them in one transaction.
+*(The Day 1 DLQ gap is closed -- see Day 2 below.)*
+
+---
+
+## Day 2 — COMPLETE, committed, pushed
+
+**Fourth process type.** `apps/scheduler/` is a leader-elected singleton running
+two fleet-wide jobs that must happen exactly once: cron materialisation and
+crash recovery. Two replicas run in compose; only one acts.
+
+**Leader election** (`main.py`): `pg_try_advisory_lock(SCHEDULER_LOCK_KEY)` on a
+*dedicated* connection held for the process lifetime. The lock is session-scoped,
+so it dies with the connection -- no lease, no TTL, no split-brain window. A
+loser logs `scheduler.standby` and retries every `SCHEDULER_LOCK_RETRY_S`. The
+key lives in `packages/locks.py` because the API also reads `pg_locks` to report
+whether a leader exists. **This is the distributed-locking bonus, banked.**
+
+**Reaper** (`reaper.py`), three sweeps, in this order:
+1. workers silent past `WORKER_HEARTBEAT_TIMEOUT_S` (60s) -> `dead`
+2. jobs held by a dead/stopped worker, **or** whose claim outlived the queue's
+   `visibility_timeout_s` -> `lost` execution row, then requeue with backoff or
+   dead-letter. `lock_token = NULL` fences the zombie out.
+3. `worker_heartbeats` trimmed in bounded batches
+
+Recovery does **not** refund the attempt -- the deliberate opposite of graceful
+shutdown's `release_jobs`. A released job never ran; a lost job may have had
+side effects, so it consumes a retry and eventually dead-letters.
+
+**Cron** (`cron.py`): croniter evaluated in the schedule's IANA timezone, so a
+schedule survives DST. Missed occurrences are **skipped, not backfilled** (an
+hour of downtime on `* * * * *` yields one job, not sixty). Each occurrence is
+keyed `cron:<schedule id>:<fire time>` into `idx_jobs_idempotency`, so a crash
+between the insert and the `next_run_at` advance cannot double-fire.
+
+**DLQ gap closed:** `EXHAUST_SQL` is now one CTE statement that flips the job to
+`dead` and inserts the `dead_letter_queue` row together. A stale token produces
+an empty `dead` arm, so the INSERT selects from nothing -- a zombie cannot
+dead-letter a live job.
+
+**API** now serves **54 endpoints** (+13): schedules CRUD + manual trigger, DLQ
+list/detail/replay/discard, `/workers`, `/workers/{id}`, `/fleet/stats`.
+`fleet_stats.scheduler_leader_present` reads `pg_locks` directly -- no
+self-reporting, so a crashed scheduler cannot look healthy.
+
+**Moved:** `apps/worker/retry.py` -> `packages/retry.py`. Worker and reaper must
+compute identical backoff; a job lost to a dead machine should not retry on a
+different schedule from one that failed in code.
+
+**Test suite** (`tests/`, pytest + testcontainers): **32 tests, all passing.**
+Real PostgreSQL, schema built by `alembic upgrade head` (not `create_all` --
+the migration is what ships). `TEST_DATABASE_URL` points the suite at an
+existing database, which is how it runs inside the API container.
+
+```bash
+docker compose exec -T -e TEST_DATABASE_URL="postgresql+asyncpg://codity:codity_dev_password@postgres:5432/codity_test"   api python -m pytest tests/ -q          # 32 passed
+```
+
+**Verified live, at scale:**
+
+| Check | Result |
+|---|---|
+| 10 workers, 500 jobs, concurrent claims | 500 claimed, **0 duplicates**, all at attempt 1 |
+| `max_concurrency=3` vs 10 workers | 3 claims fleet-wide, not 3 per worker |
+| **`kill -9` gate:** 10 containers, 300 x 8s jobs, killed the worker holding 10 | 300/300 completed · 300 succeeded executions · 10 `lost` · **0 jobs succeeded twice** · 0 duplicate (job, attempt) pairs |
+| Scheduler failover: `kill -9` the leader | standby acquired in **5s**, unattended |
+| Cron `* * * * *` in `Asia/Kolkata` | fired on the minute, one job per occurrence |
+| DLQ round trip | exhaust -> entry with payload + stack -> replay -> new job, second replay 409 |
 
 ## Remaining days
 
 | Day | Scope | Gate |
 |---|---|---|
-| 2 (Aug 23) | Retry strategies, DLQ, cron scheduler + advisory lock, reaper, heartbeats, graceful shutdown, **10-worker concurrency test** | `kill -9` a worker, job recovers |
 | 3 (Aug 24) | Six dashboard pages, SSE, charts | Dashboard drives the system |
 | 4 (Aug 25 AM) | ARCHITECTURE.md, ER-DIAGRAM.md, DESIGN-DECISIONS.md, API docs, bonuses | Submit |
 
-**Hard rule:** if Day 2 slips, cut frontend scope before cutting reliability work.
-Frontend is 10 marks; reliability is 15 and architecture is 20.
+**Hard rule:** cut frontend scope before cutting reliability work. Frontend is
+10 marks; reliability is 15 and architecture is 20.
 
 ---
 
 ## Design decisions still owed to DESIGN-DECISIONS.md
 
 Postgres-as-queue vs Celery · `SKIP LOCKED` vs advisory locks · fencing tokens ·
-`jobs` vs `job_executions` · partial indexes · keyset vs offset · SSE vs
-WebSockets · FK cascade policy · asyncio multi-process vs threads (GIL) ·
+`jobs` vs `job_executions` · partial indexes (the 21x figure) · keyset vs offset ·
+SSE vs WebSockets · FK cascade policy · asyncio multi-process vs threads (GIL) ·
 polling vs `LISTEN/NOTIFY` · native enums vs CHECK constraints · citext vs
 normalized email.
+
+Added Day 2: advisory-lock leader election vs etcd/Redis · why the lock needs a
+dedicated connection · lost-attempt consumes a retry while a released one does
+not · cron skip-vs-backfill · occurrence idempotency keys · per-schedule IANA
+timezone vs stored UTC offset · `pg_locks` as liveness vs a scheduler heartbeat ·
+heartbeat retention by batched DELETE, with pg_partman as the scale-out path.
