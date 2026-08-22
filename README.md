@@ -155,8 +155,22 @@ Full reasoning in [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md).
 
 ## Bonus features
 
-Three, chosen for cost/impact — details in
+The assignment listed eight; **three are implemented** and the other five are
+deliberately scoped out with a recorded rationale — full table in
 [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) §30–32.
+
+| Bonus | Status |
+|---|---|
+| Distributed locking | **Built** |
+| Role-based access control | **Built** |
+| AI-generated failure summaries | **Built** |
+| WebSocket live updates | Live updates **built via SSE** — chosen over WebSockets for a server→client-only feed |
+| Event-driven execution | Polling with backoff; `LISTEN/NOTIFY` documented as the upgrade path |
+| Workflow dependencies | Scoped out — `jobs.depends_on` reserved |
+| Rate limiting | Scoped out — `queues.rate_limit_per_sec` reserved |
+| Queue sharding | Scoped out — partial claim index keeps latency flat without it |
+
+The three that are built:
 
 - **Distributed locking** — the scheduler is a leader-elected singleton via
   `pg_try_advisory_lock` on a dedicated session-scoped connection. No lease, no

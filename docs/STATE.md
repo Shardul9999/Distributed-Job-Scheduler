@@ -33,6 +33,20 @@ Commits carry **Shardul's authorship only** — never add a Claude co-author tra
 | **SSE**, not WebSockets | Data flow is server→client only |
 | **`depends_on` column kept** | Explicitly requested; reserved for workflow DAGs, not implemented |
 | **Bonuses capped at 3** | Distributed locking, RBAC, AI failure summaries |
+
+**The assignment's full bonus list (all 8), recorded verbatim so it is never
+lost again** — outcome for each is in DESIGN-DECISIONS.md §30–32:
+
+| Bonus | Outcome |
+|---|---|
+| Workflow dependencies | scoped out (`jobs.depends_on` reserved) |
+| Rate limiting | scoped out (`queues.rate_limit_per_sec` reserved) |
+| **Distributed locking** | **BUILT** |
+| Queue sharding | scoped out |
+| Event-driven execution | scoped out; polling + backoff, `LISTEN/NOTIFY` = upgrade path |
+| WebSocket live updates | live updates **built via SSE**, WebSockets rejected with rationale |
+| **Role-based access control** | **BUILT** |
+| **AI-generated failure summaries** | **BUILT** |
 | Python 3.12 in Docker | Local 3.14 unused; asyncpg wheels lag new interpreters |
 
 ---

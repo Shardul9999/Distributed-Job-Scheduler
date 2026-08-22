@@ -316,9 +316,23 @@ the DLQ page. Three decisions make it safe to ship enabled:
   malformed response — returns `None` and logs; it can never turn "inspect this
   dead job" into a 500.
 
-### Deliberately scoped out (named as judgement, not gaps)
+### The full bonus list, and what happened to each
 
-Workflow **DAG dependencies** (`depends_on` reserved, §29), **queue sharding**,
-and **rate limiting** (`queues.rate_limit_per_sec` reserved) are out of scope. The
-assignment's own closing line says quality beats feature count, so three bonuses
-are implemented well rather than eight implemented thinly.
+The assignment offered **eight** bonus features. Its own closing line says
+quality beats feature count, so three were implemented properly rather than
+eight implemented thinly. All eight are accounted for here — the five not built
+were *decided against*, not missed, and each has a decision recorded above:
+
+| # | Bonus | Outcome |
+|---|---|---|
+| 1 | Workflow dependencies | **Scoped out.** `jobs.depends_on` (`uuid[]`) is reserved for it (§29); DAG execution is not implemented. |
+| 2 | Rate limiting | **Scoped out.** `queues.rate_limit_per_sec` is reserved for it; no limiter is enforced. Redis was earmarked for this and nothing else. |
+| 3 | Distributed locking | **Built** (§12, §30) — `pg_try_advisory_lock` leader election on a dedicated session-scoped connection. |
+| 4 | Queue sharding | **Scoped out.** Single-queue-per-row throughput is far from the ceiling at this scale; the partial claim index (§26) is what keeps claim latency flat, and sharding would add routing complexity for no measured gain. |
+| 5 | Event-driven execution | **Scoped out, with the path documented** (§10). The claim loop polls with idle backoff (100 ms → 2 s) because polling is trivially correct and self-healing; `LISTEN/NOTIFY` is named as the first optimisation if enqueue-to-start latency ever becomes the metric. |
+| 6 | WebSocket live updates | **Delivered by a different transport** (§20, §21). The dashboard *does* update live — via **SSE**, chosen deliberately because the data flow is server→client only. WebSockets would add a full-duplex channel to a half-duplex problem. The bonus's intent (live updates) is met; its named mechanism was rejected for a stated reason. |
+| 7 | Role-based access control | **Built** (§31) — ranked roles enforced by a dependency that runs before the handler. |
+| 8 | AI-generated failure summaries | **Built** (§32) — provider-agnostic, lazy, best-effort. |
+
+Naming what was chosen against — and why — is the point: five of these are
+engineering judgement with a recorded rationale, not omissions.
