@@ -103,8 +103,11 @@ export function Sidebar({ connected }: { connected: boolean }) {
           <Dot tone={connected ? "ok" : "warn"} pulse={connected} />
           {connected ? "Live" : "Reconnecting…"}
         </div>
-        <div className="truncate text-[11px] text-faint" title={me?.email}>
-          {me?.email ?? "—"}
+        <div
+          className="truncate text-[11px] text-faint"
+          title={me?.user.email}
+        >
+          {me?.user.full_name ?? me?.user.email ?? "—"}
         </div>
         <button className="btn w-full justify-center gap-2" onClick={logout}>
           <IconSignOut className="h-3.5 w-3.5" />

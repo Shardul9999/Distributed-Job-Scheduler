@@ -29,11 +29,26 @@ export interface TokenPair {
   expires_in?: number;
 }
 
-export interface Me {
+export interface User {
   id: string;
   email: string;
   full_name: string | null;
   is_active: boolean;
+  created_at: string;
+}
+
+export interface OrgMembership {
+  org_id: string;
+  org_name: string;
+  org_slug: string;
+  role: "owner" | "admin" | "member" | "viewer";
+}
+
+/** `GET /auth/me`. The user is nested, not at the top level -- this shape is
+ *  the endpoint's actual response, verified against it. */
+export interface Me {
+  user: User;
+  organizations: OrgMembership[];
 }
 
 export interface Organization {
