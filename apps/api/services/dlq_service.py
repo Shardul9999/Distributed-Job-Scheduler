@@ -22,9 +22,11 @@ import structlog
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from apps.api.core.config import settings
 from apps.api.core.errors import ConflictError, NotFoundError, ValidationError
 from apps.api.core.pagination import PageParams, build_page
 from apps.api.schemas.dlq import ReplayRequest
+from apps.api.services.ai_summary import summarize_failure
 from packages.db import DeadLetterEntry, Job, Queue, RetryPolicy
 from packages.db.enums import JobStatus
 
@@ -81,6 +83,20 @@ async def get_entry(
     entry = (await db.execute(stmt)).scalar_one_or_none()
     if entry is None:
         raise NotFoundError("Dead letter entry not found")
+
+    # AI failure summary (bonus): generate lazily on first inspection, then
+    # persist so it is computed at most once per entry. Best-effort -- if the
+    # provider is unset or the call fails, ai_summary simply stays null and the
+    # entry is returned exactly as it would be without the feature.
+    if entry.ai_summary is None and settings.ai_summary_enabled:
+        summary = await summarize_failure(
+            entry.job_type, entry.failure_reason, entry.error_stack
+        )
+        if summary:
+            entry.ai_summary = summary
+            await db.commit()
+            await db.refresh(entry)
+
     return entry
 
 

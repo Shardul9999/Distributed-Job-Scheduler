@@ -153,6 +153,27 @@ Full reasoning in [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md).
 
 ---
 
+## Bonus features
+
+Three, chosen for cost/impact — details in
+[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) §30–32.
+
+- **Distributed locking** — the scheduler is a leader-elected singleton via
+  `pg_try_advisory_lock` on a dedicated session-scoped connection. No lease, no
+  TTL, no split-brain; a `kill -9` on the leader frees the lock automatically.
+- **RBAC** — ranked roles (`viewer < member < admin < owner`) enforced by a
+  FastAPI dependency that runs before the handler; non-members get `404`, not
+  `403`, so org ids can't be enumerated.
+- **AI failure summaries** — a dead-lettered job's stack trace is summarised into
+  one plain-English cause on the DLQ page. **Optional and provider-agnostic:**
+  set `GROQ_API_KEY` *or* `GEMINI_API_KEY` in `.env` to enable it (free tiers:
+  [Groq](https://console.groq.com/keys), [Gemini](https://aistudio.google.com/apikey)).
+  With no key set, the feature is inert — `ai_summary` stays null and the system
+  behaves identically. Generated lazily on first inspection, then cached; any
+  provider error degrades silently to no summary.
+
+---
+
 ## Project layout
 
 ```
@@ -264,11 +285,12 @@ underlying table is being written to concurrently.
 
 | Document | Contents |
 |---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Four process types, module layering, job lifecycle, reliability guarantees |
+| [docs/ER-DIAGRAM.md](docs/ER-DIAGRAM.md) | 13-table ER diagram, FK cascade policy, indexes, enums |
+| [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) | 32 decisions with rejected alternatives and rationale |
+| [docs/API.md](docs/API.md) | Endpoint reference — 58 operations |
+| [docs/openapi.json](docs/openapi.json) | Machine-readable OpenAPI spec (also live at `/docs`) |
 | [docs/PLAN.md](docs/PLAN.md) | Full implementation plan, schema, build schedule |
-| docs/ARCHITECTURE.md | Component diagram and data flow *(Day 4)* |
-| docs/ER-DIAGRAM.md | Entity-relationship diagram *(Day 4)* |
-| docs/DESIGN-DECISIONS.md | Trade-offs and rejected alternatives *(Day 4)* |
-| docs/API.md | Endpoint reference *(Day 4)* |
 
 ---
 
@@ -280,4 +302,4 @@ underlying table is being written to concurrently.
 | 1 | Queue + job APIs, atomic claim query, worker service | **Done** |
 | 2 | Retries, DLQ, cron scheduler, reaper, concurrency tests | **Done** |
 | 3 | Dashboard, SSE live updates, charts, metrics endpoints | **Done** |
-| 4 | Diagrams, design decisions, API docs, bonuses | Next |
+| 4 | Diagrams, design decisions, API docs, bonuses (RBAC · distributed lock · AI summaries) | **Done** |

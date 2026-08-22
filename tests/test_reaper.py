@@ -16,6 +16,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,31 @@ from apps.scheduler import reaper
 from packages.db import DeadLetterEntry, Job, JobExecution, Worker
 from packages.db.claim import claim_jobs, complete_job
 from packages.db.enums import ExecutionStatus, JobStatus, WorkerStatus
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _isolate_fleet(db: AsyncSession) -> None:
+    """Give each reaper test an empty fleet.
+
+    `recover_orphans` and `mark_dead_workers` sweep the entire database on
+    purpose -- a reaper that only looked at one project would leave every other
+    project's crashed jobs stranded. The rest of the suite shares one migrated
+    database and isolates by unique tags, but a fleet-wide sweep cannot be
+    tag-isolated: one test's orphaned jobs would be counted by another test's
+    assertion on the global `(requeued, dead_lettered)` tuple (the flake that
+    made the idempotency test see 200 orphans instead of 1).
+
+    Truncating just the job/worker tables before each test restores isolation
+    without a global teardown. Scaffold's org/project/queue rows are untouched,
+    and this only ever runs against TEST_DATABASE_URL.
+    """
+    await db.execute(
+        text(
+            "TRUNCATE job_executions, dead_letter_queue, jobs, "
+            "worker_heartbeats, workers RESTART IDENTITY CASCADE"
+        )
+    )
+    await db.commit()
 
 
 async def _worker(db: AsyncSession, *, status=WorkerStatus.ACTIVE, beat_age_s=0):

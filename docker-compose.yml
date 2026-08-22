@@ -63,6 +63,13 @@ services:
       # The API is the single migration owner; workers added later will not set
       # this, so they cannot race it for the alembic_version row.
       RUN_MIGRATIONS: "true"
+      # AI failure summaries (bonus). Optional: leave the keys empty and the
+      # feature is inert. Set one to enable it -- no rebuild needed.
+      AI_SUMMARY_PROVIDER: ${AI_SUMMARY_PROVIDER:-auto}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:

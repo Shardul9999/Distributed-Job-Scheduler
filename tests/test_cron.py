@@ -110,7 +110,11 @@ async def test_due_template_produces_exactly_one_job(
     fire_at = datetime.now(UTC) - timedelta(seconds=5)
     schedule_id = await _schedule(db, queue.id, next_run_at=fire_at)
 
-    assert await cron.materialize_due(db) == 1
+    # materialize_due returns a fleet-wide count; other tests sharing this
+    # database may leave their own due schedules behind, so assert this tick
+    # produced *at least* one job and verify the exactly-one guarantee against
+    # this schedule specifically below.
+    assert await cron.materialize_due(db) >= 1
 
     jobs = (
         await db.execute(select(Job).where(Job.scheduled_job_id == schedule_id))

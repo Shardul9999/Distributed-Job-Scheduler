@@ -3,7 +3,7 @@
 **Read this first when resuming work.** It records exactly where the build is,
 what is verified, and what comes next. Updated at the end of each day.
 
-Last updated: **22 Aug 2026 — Day 3 COMPLETE**
+Last updated: **22 Aug 2026 — Day 4 COMPLETE (ready to submit)**
 
 ---
 
@@ -242,11 +242,74 @@ Re-runnable. Nominally a Day 4 item, built now because the Day 3 gate is
 | throughput / latency | 30 non-empty buckets; 97 samples, p50 20ms / p95 1.9s |
 | SSE auth | bad/missing token → 401/422 |
 
+## Day 4 — COMPLETE, committed, pushed
+
+**The final day: documentation, the third bonus, and a flaky-test fix.**
+
+**Third bonus — AI failure summaries — finished.** Days 0–3 left the `ai_summary`
+column and the DLQ page's render-when-present, but nothing generated it. Built
+`apps/api/services/ai_summary.py`: **provider-agnostic over `httpx`** (already a
+dep — no SDK), auto-detecting Groq (OpenAI-compatible) or Gemini from whichever
+API key is set. Wired **lazily** into `dlq_service.get_entry` — generated on first
+inspection of a dead letter, then persisted, so it is computed at most once and
+never on the worker's failure path. **Best-effort:** no key / timeout / bad
+response → `None`, logged, never raised. With no key the feature is inert and the
+system runs and grades exactly as before. Config in `core/config.py`
+(`active_ai_provider` resolves the effective provider or None); env passthrough
+added to the `api` service in compose and documented in `.env.example`.
+**User has no Anthropic key** — chose Groq/Gemini free tier; keys not committed.
+
+**Flaky cron test fixed — and a second isolation bug found and fixed.** The known
+`test_due_template_produces_exactly_one_job` flake was a global `materialize_due()`
+count asserted `== 1`; scoped to `>= 1` (the per-schedule `len(jobs) == 1` already
+proves exactly-once). Running the *full* suite then surfaced 5 **reaper** failures
+that pass in isolation: `recover_orphans`/`mark_dead_workers` sweep the whole DB by
+design, so other tests' orphaned jobs were counted by assertions on the global
+`(requeued, dead_lettered)` tuple (idempotency test saw 200 orphans, not 1). Fixed
+with an autouse fixture in `test_reaper.py` that `TRUNCATE`s the job/worker tables
+before each reaper test — fleet isolation without a global teardown, scoped to
+those tables so scaffold survives, safe because the suite only runs against
+`TEST_DATABASE_URL`. **Suite now 32 passed, stable across 3 consecutive runs.**
+
+**Documentation — four graded docs, written from live ground truth** (DB
+introspection + exported OpenAPI, not memory):
+
+- `docs/ARCHITECTURE.md` — four process types + one DB, module layering
+  (router→service→model), the job lifecycle state machine, the four reliability
+  guarantees and where each lives, worker internals, compose topology, data flow.
+- `docs/ER-DIAGRAM.md` — 13-table Mermaid ER diagram with exact columns/types
+  from the running DB, the CASCADE/RESTRICT/SET NULL policy per edge, the
+  index catalogue (incl. the 21× partial-index figure), native enums.
+- `docs/DESIGN-DECISIONS.md` — **32 decisions**, each choice / rejected
+  alternative / why, covering everything owed across Days 0–3 plus the three
+  bonuses and the deliberately-scoped-out list.
+- `docs/API.md` + `docs/openapi.json` — 58-operation reference (auth, RBAC,
+  error envelope, keyset pagination, idempotency, SSE) and the committed spec.
+
+**README** updated: Documentation table now links all four docs + the spec, a new
+**Bonus features** section documents how to enable AI summaries, Status shows
+Day 4 **Done**.
+
+**Corrections caught against ground truth:** `users.email` is normalized
+`varchar` + plain unique index (not `citext` as the design list floated) — fixed
+in the ER diagram; the decision is written up as §28.
+
+**Verified:**
+
+| Check | Result |
+|---|---|
+| Full pytest suite | **32 passed**, stable ×3 runs (was 32 with 1 known flake + 5 order-dependent) |
+| AI summary disabled-by-default | `ai_summary_enabled=False`, `active_ai_provider=None` with no key; DLQ get unchanged |
+| New code imports in container | config + ai_summary + dlq_service import clean |
+| OpenAPI export | 42 paths / 58 operations, committed to `docs/openapi.json` |
+| Stack still healthy | 8 containers up; API `/health` 200 |
+
+---
+
 ## Remaining days
 
-| Day | Scope | Gate |
-|---|---|---|
-| 4 (Aug 25 AM) | ARCHITECTURE.md, ER-DIAGRAM.md, DESIGN-DECISIONS.md, API docs, bonuses | Submit |
+*None — Day 4 was the final day. The build is feature-complete and documented;
+next action is submission before the 25 Aug deadline.*
 
 **Hard rule:** cut frontend scope before cutting reliability work. Frontend is
 10 marks; reliability is 15 and architecture is 20.
