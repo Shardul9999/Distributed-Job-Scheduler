@@ -125,7 +125,12 @@ services:
     # strand its jobs until the visibility timeout expired. This must exceed
     # WORKER_SHUTDOWN_GRACE_S.
     stop_grace_period: 45s
-    # No container_name: that would prevent `--scale worker=3`.
+    # No container_name: that would prevent scaling past one replica.
+    # Three by default so `docker compose up -d` alone produces the topology
+    # the README describes -- a fleet competing for the same jobs, which is the
+    # whole point of the claim query. Override with `--scale worker=N`.
+    deploy:
+      replicas: 3
     restart: unless-stopped
 
   scheduler:
