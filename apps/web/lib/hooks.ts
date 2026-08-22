@@ -78,6 +78,17 @@ export function useDlq(projectId: string | null, unreplayedOnly: boolean) {
   });
 }
 
+export function useDlqEntry(projectId: string | null, entryId: string | null) {
+  return useQuery({
+    queryKey: ["dlq-entry", projectId, entryId],
+    queryFn: () => api.dlqEntry(projectId!, entryId!),
+    enabled: !!projectId && !!entryId,
+    // No refetchInterval: a dead letter is terminal, so it does not change
+    // under us. The one mutable field is ai_summary, which the server fills in
+    // on this very request and then persists.
+  });
+}
+
 export function useWorkers(includeStopped: boolean) {
   return useQuery({
     queryKey: ["workers", includeStopped],

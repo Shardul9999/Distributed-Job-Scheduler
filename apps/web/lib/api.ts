@@ -171,6 +171,11 @@ export const api = {
     request<Page<DeadLetterEntry>>(
       `/projects/${projectId}/dlq${qs({ unreplayed_only: unreplayedOnly })}`,
     ),
+  // Fetching one entry is what triggers the lazy AI failure summary server-side
+  // (generated on first inspection, then persisted), so the detail drawer must
+  // hit this rather than render the row it already has from the list.
+  dlqEntry: (projectId: string, id: string) =>
+    request<DeadLetterEntry>(`/projects/${projectId}/dlq/${id}`),
   replayDlq: (projectId: string, id: string) =>
     request<unknown>(`/projects/${projectId}/dlq/${id}/replay`, { method: "POST" }),
   discardDlq: (projectId: string, id: string) =>

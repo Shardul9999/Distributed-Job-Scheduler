@@ -12,12 +12,12 @@ import {
   Spinner,
 } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { useDlq, useDlqMutations } from "@/lib/hooks";
+import { useDlq, useDlqEntry, useDlqMutations } from "@/lib/hooks";
 import { relativeTime, shortId } from "@/lib/format";
 import type { DeadLetterEntry } from "@/lib/types";
 
 function DlqDetail({
-  entry,
+  entry: listRow,
   projectId,
   onClose,
 }: {
@@ -26,6 +26,15 @@ function DlqDetail({
   onClose: () => void;
 }) {
   const { replay, discard } = useDlqMutations(projectId);
+  // Re-fetch the entry on open. The list row is already complete enough to
+  // render instantly (so the drawer never flashes empty), but only the detail
+  // endpoint generates the AI failure summary, so opening the drawer is what
+  // triggers it. Fall back to the list row until the fetch lands.
+  const { data: fetched, isLoading: summaryLoading } = useDlqEntry(
+    projectId,
+    listRow.id,
+  );
+  const entry = fetched ?? listRow;
   const replayed = entry.replayed_at != null;
 
   return (
@@ -72,14 +81,23 @@ function DlqDetail({
           )}
         </div>
 
-        {entry.ai_summary && (
+        {/* Shown while the detail request is in flight, because that request is
+            what generates the summary. Once it resolves with nothing, the
+            feature is simply off (no API key configured) and the block hides
+            rather than showing an empty promise. */}
+        {(entry.ai_summary || summaryLoading) && (
           <div>
             <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-wide text-muted">
               AI failure summary
               <Badge className="bg-brand/15 text-brand">beta</Badge>
             </div>
             <div className="rounded-lg border border-brand/30 bg-brand/10 p-3 text-sm">
-              {entry.ai_summary}
+              {entry.ai_summary ?? (
+                <span className="flex items-center gap-2 text-muted">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-brand" />
+                  Analysing failure…
+                </span>
+              )}
             </div>
           </div>
         )}
