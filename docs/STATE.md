@@ -320,6 +320,43 @@ in the ER diagram; the decision is written up as §28.
 
 ---
 
+## Post-Day-4 fix — fleet-wide concurrency cap (committed, pushed)
+
+**Found a real bug in the claim path and fixed it.** `max_concurrency` is a
+*fleet-wide* cap, but concurrent claimers each read the in-flight count under
+`READ COMMITTED`, all computed the same headroom, and each took a full
+allowance: **10 workers vs a cap of 3 put 30 jobs in flight**. The overshoot
+factor equals the fleet size. Not a duplicate-execution bug — `SKIP LOCKED` still
+gave every worker distinct rows — a *capacity* bug, which matters because the
+setting exists to shield downstream dependencies.
+
+**Why the suite missed it:** the `engine` fixture is function-scoped, so every
+test run started with a **cold connection pool**; establishing 10 asyncpg
+connections staggered the claimers so they never overlapped. Cold round → correct
+3. Every warm round → 30. The suite only ever ran the cold one.
+
+**The fix** (`packages/db/claim.py`): `LOCK_QUEUE_SQL`, a row lock on the queue,
+taken as its **own statement** before `CLAIM_SQL` in the same transaction. The
+separate-statement part is essential — a `FOR UPDATE` CTE inside the claim
+serialises claimers but does *not* give a waiter a fresh snapshot on wake
+(`READ COMMITTED` snapshots are per-statement), so it still measured 21 in flight
+against a cap of 3. A preceding statement means the claim runs with a new
+snapshot that sees the previous claimer's committed work.
+
+| Check | Before | After |
+|---|---|---|
+| 40 rounds, 10 workers, cap 3 | **39/40 exceeded** (up to 30) | **0/40**, exactly 3 every round |
+| Claim throughput, one hot queue | 8,630/s | 4,135/s (~2×, acceptable) |
+| Live: capped queue, 3 worker containers | — | pinned at 2, all 8 drained, 0 dup `(job, attempt)` |
+| Test suite | 32 passed | **33 passed**, stable ×3 |
+
+Regression test `test_concurrency_cap_holds_with_a_warm_pool` warms the pool
+first and asserts DB row counts, not what the claim reports about itself.
+**Verified it fails on the old query** (18–30 in flight) before trusting it.
+Written up as DESIGN-DECISIONS.md §6a.
+
+---
+
 ## Remaining days
 
 *None — Day 4 was the final day. The build is feature-complete and documented;

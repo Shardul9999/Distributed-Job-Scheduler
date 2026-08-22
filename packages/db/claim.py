@@ -33,6 +33,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 #
 # Reading it outside-in:
 #
+# This statement is preceded by LOCK_QUEUE_SQL in the same transaction, which is
+# what makes `max_concurrency` a real fleet-wide budget rather than a per-worker
+# suggestion. Without it, ten workers against a cap of 3 measurably put 30 jobs
+# in flight -- the overshoot factor is the fleet size, so the limit breaks worse
+# the more you scale. Do not remove it; `test_concurrency_cap_holds_with_a_warm_pool`
+# fails loudly if it goes.
+#
 #   headroom   How many more jobs from this queue may run right now, given the
 #              queue's FLEET-WIDE max_concurrency and what is already in flight
 #              across every worker. Yields no rows at all when the queue is
@@ -62,6 +69,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # `headroom` (paused queue, or no free slots) produces no candidates at all --
 # so the LIMIT expression is never reached with a NULL.
 #
+#: Taken as its OWN statement immediately before CLAIM_SQL, in the same
+#: transaction. Both halves of that sentence are load-bearing.
+#:
+#: *A lock*, because `SKIP LOCKED` only guarantees two claimers take different
+#: job ROWS -- it says nothing about them sharing a BUDGET.
+#:
+#: *A separate statement*, because of how READ COMMITTED works: a statement's
+#: snapshot is taken when the statement starts. Folding this lock into the claim
+#: query (as a `FOR UPDATE` CTE) still serialises claimers, but a waiter that
+#: blocks mid-statement does NOT get a fresh snapshot when it wakes -- it counts
+#: in-flight jobs as of before it blocked, computes the same headroom, and
+#: overshoots anyway. Measured: still 21 jobs in flight against a cap of 3.
+#: Issuing the lock first means the claim that follows is a NEW statement with a
+#: NEW snapshot, which sees the work the previous claimer just committed.
+LOCK_QUEUE_SQL = text("""
+SELECT id FROM queues WHERE id = :queue_id FOR UPDATE
+""")
+
 CLAIM_SQL = text("""
 WITH headroom AS (
     SELECT
@@ -125,11 +150,19 @@ async def claim_jobs(
     ORM instances attempting a lazy refresh there are a well-known source of
     async session errors.
     """
+    # Serialise the capacity decision for this queue before reading headroom.
+    # See LOCK_QUEUE_SQL for why this is a separate statement rather than a
+    # FOR UPDATE inside the claim itself -- it is the difference between the cap
+    # holding and the cap being exceeded by a factor of the fleet size.
+    await db.execute(LOCK_QUEUE_SQL, {"queue_id": queue_id})
+
     result = await db.execute(
         CLAIM_SQL,
         {"queue_id": queue_id, "worker_id": worker_id, "batch_size": batch_size},
     )
     rows = result.mappings().all()
+    # Commit releases the queue lock. Held for the two statements above and no
+    # longer; different queues never contend for it at all.
     await db.commit()
     return [dict(r) for r in rows]
 

@@ -21,7 +21,7 @@ import uuid
 from collections import Counter
 
 import pytest
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from packages.db import Job, Queue, Worker
@@ -183,6 +183,46 @@ async def test_exactly_once_execution_end_to_end(
     assert remaining == 0, f"{remaining} jobs did not reach COMPLETED"
 
 
+async def _warm_pool(
+    maker: async_sessionmaker[AsyncSession], n: int
+) -> None:
+    """Establish `n` pooled connections *before* the concurrent section.
+
+    This is not tidiness, it is the difference between a real test and a green
+    one. Opening an asyncpg connection takes long enough that a cold pool
+    staggers concurrent claimers so they never actually overlap -- and a claim
+    race that never overlaps is a race that never fires. The fleet-wide cap was
+    broken by a factor of ten for three days behind exactly this effect: the
+    first (cold) round claimed the correct 3, every warm round after it claimed
+    30, and the suite only ever ran the cold one.
+
+    In production the pool is warm and long-lived, so warm is the honest
+    condition to test under.
+    """
+
+    async def touch() -> None:
+        async with maker() as session:
+            await session.execute(text("SELECT 1"))
+
+    await asyncio.gather(*(touch() for _ in range(n)))
+
+
+async def _in_flight(db: AsyncSession, queue_id: uuid.UUID) -> int:
+    """Jobs actually held by someone, read from the database.
+
+    Asserting on what `claim_jobs` *returned* trusts the code under test to
+    report itself honestly. This counts rows.
+    """
+    return await db.scalar(
+        select(func.count())
+        .select_from(Job)
+        .where(
+            Job.queue_id == queue_id,
+            Job.status.in_([JobStatus.CLAIMED, JobStatus.RUNNING]),
+        )
+    )
+
+
 async def test_queue_concurrency_cap_is_fleet_wide(
     db: AsyncSession, sessionmaker: async_sessionmaker[AsyncSession], scaffold: dict
 ) -> None:
@@ -198,6 +238,7 @@ async def test_queue_concurrency_cap_is_fleet_wide(
 
     await _seed_jobs(db, queue, 50)
     worker_ids = [await _register_worker(db, 200 + i) for i in range(WORKER_COUNT)]
+    await _warm_pool(sessionmaker, WORKER_COUNT)
 
     async def grab(worker_id: uuid.UUID) -> int:
         async with sessionmaker() as session:
@@ -207,6 +248,55 @@ async def test_queue_concurrency_cap_is_fleet_wide(
     assert sum(counts) == 3, (
         f"Fleet claimed {sum(counts)} jobs against a max_concurrency of 3"
     )
+    assert await _in_flight(db, queue.id) == 3
+
+
+async def test_concurrency_cap_holds_with_a_warm_pool(
+    db: AsyncSession, sessionmaker: async_sessionmaker[AsyncSession], scaffold: dict
+) -> None:
+    """Regression: the cap must hold on every round, not just the first.
+
+    Guards the queue row lock in `CLAIM_SQL`. Remove that lock and this fails on
+    round 2 with 30 jobs in flight against a cap of 3 -- every claimer reads the
+    same in-flight count under READ COMMITTED, computes the same headroom, and
+    takes a full allowance each. `SKIP LOCKED` keeps them on *different rows*;
+    it does not make them share a *budget*.
+
+    Several rounds, because round 1 runs against a pool that is only just warm
+    and is the one condition under which the broken version passes.
+    """
+    project, policy = scaffold["project"], scaffold["policy"]
+    cap, rounds = 3, 4
+    await _warm_pool(sessionmaker, WORKER_COUNT)
+    worker_ids = [await _register_worker(db, 400 + i) for i in range(WORKER_COUNT)]
+
+    for round_no in range(rounds):
+        # A fresh queue each round: jobs claimed in the previous round are still
+        # in flight and would otherwise legitimately consume the next round's
+        # headroom, hiding an overshoot behind a correct-looking zero.
+        queue = Queue(
+            project_id=project.id,
+            name=f"cap-{uuid.uuid4().hex[:8]}",
+            max_concurrency=cap,
+            visibility_timeout_s=300,
+            default_timeout_s=60,
+            retry_policy_id=policy.id,
+        )
+        db.add(queue)
+        await db.commit()
+        await _seed_jobs(db, queue, 50)
+
+        async def grab(worker_id: uuid.UUID, q_id: uuid.UUID = queue.id) -> int:
+            async with sessionmaker() as session:
+                return len(await claim_jobs(session, q_id, worker_id, batch_size=10))
+
+        await asyncio.gather(*(grab(w) for w in worker_ids))
+
+        in_flight = await _in_flight(db, queue.id)
+        assert in_flight == cap, (
+            f"round {round_no}: {in_flight} jobs in flight against "
+            f"max_concurrency={cap} -- the fleet-wide budget was not enforced"
+        )
 
 
 async def test_paused_queue_yields_nothing(

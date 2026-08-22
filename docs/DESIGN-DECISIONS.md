@@ -75,6 +75,50 @@ reports success holds the *old* token — its `UPDATE` matches zero rows and is
 silently discarded. This is the invariant the concurrency and reaper tests exist
 to prove.
 
+### 6a. A fleet-wide cap needs a lock, and the lock needs its own statement
+
+`SKIP LOCKED` guarantees two claimers take *different rows*. It does **not** make
+them share a *budget*. Under `READ COMMITTED` every concurrent claimer read the
+same in-flight count, computed the same headroom, and took a full allowance
+each — so ten workers against `max_concurrency = 3` put **30 jobs in flight, not
+3**. The overshoot factor is the fleet size, which is backwards for a safety
+valve whose whole purpose is shielding a downstream dependency: the more you
+scale, the harder the limit breaks.
+
+The fix is a row lock on the queue (`LOCK_QUEUE_SQL`) taken **as its own
+statement** immediately before the claim, in the same transaction. Both halves
+matter, and the second is the subtle one: in `READ COMMITTED` a statement's
+snapshot is taken *when the statement starts*. Folding the lock into the claim
+query as a `FOR UPDATE` CTE still serialises claimers, but a waiter that blocks
+mid-statement does **not** get a fresh snapshot when it wakes — it counts
+in-flight jobs as of before it blocked and overshoots anyway (measured: still 21
+in flight against a cap of 3). Issuing the lock first means the claim that
+follows is a *new* statement with a *new* snapshot, which sees what the previous
+claimer just committed.
+
+**Measured**, 10 workers vs `max_concurrency = 3`, 40 rounds:
+
+| | Before | After |
+|---|---|---|
+| Rounds exceeding the cap | **39 / 40** | **0 / 40** |
+| Jobs in flight | up to 30 | exactly 3, every round |
+| Claim throughput, one hot queue | 8,630/s | 4,135/s |
+
+The ~2× throughput cost is the honest price and it is worth paying: 4,100
+claims/sec on a *single* queue is far beyond any real workload (job execution is
+the bottleneck, not claiming), different queues never contend for the lock, and
+the alternative is a limit that does not limit. Verified live as well — a capped
+queue against three real worker containers sat at exactly 2 in flight for the
+whole run, drained all 8 jobs, and recorded zero duplicate `(job, attempt)` pairs.
+
+**Why this was invisible:** the original test passed because the `engine` fixture
+is function-scoped, so every run started with a **cold connection pool** — and
+establishing ten asyncpg connections staggers the claimers enough that they never
+actually overlap. The first (cold) round claimed the correct 3; every warm round
+after it claimed 30, and the suite only ever ran the cold one. The regression test
+now warms the pool first and asserts against database row counts rather than what
+the claim reported about itself.
+
 ### 7. Per-queue claiming, looped — not one cross-queue statement
 
 Each queue has its own `max_concurrency` cap. Applying every queue's cap in a
