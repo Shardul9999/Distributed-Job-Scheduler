@@ -25,20 +25,23 @@ import type {
   ThroughputResponse,
 } from "@/lib/types";
 
-const GRID = "#232a39";
-const AXIS = "#8b94a7";
+// Mirrors tailwind.config.ts, which in turn mirrors Codity's dashboard tokens.
+// Recharts needs literal values, so these are the one place the palette is
+// duplicated -- keep them in step with the config.
+const GRID = "#202020";
+const AXIS = "#8e8e8e";
 const COLORS = {
-  ok: "#3ecf8e",
-  danger: "#f2555a",
-  warn: "#f5b544",
-  info: "#56b6ff",
-  brand: "#5b8cff",
+  ok: "#3ec98a",
+  danger: "#ff5b52",
+  warn: "#f5a83c",
+  info: "#2f8eff",
+  brand: "#0075ff",
 };
 
 const tooltipStyle = {
-  backgroundColor: "#12161f",
-  border: "1px solid #232a39",
-  borderRadius: 8,
+  backgroundColor: "#131313",
+  border: "1px solid #303030",
+  borderRadius: 6,
   fontSize: 12,
 };
 

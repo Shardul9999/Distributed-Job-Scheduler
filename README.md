@@ -127,6 +127,14 @@ logs, retry / cancel), **Workers** (fleet with heartbeat freshness),
 **Schedules** (cron entries, next fire time, manual trigger), and **Dead
 Letters** (failure inspection and replay).
 
+**Design language.** The dashboard deliberately mirrors Codity's own product
+console: the surface, border, text, accent and status colours are Codity's design
+tokens verbatim (`--bg-app` `#090909`, `--bg-surface` `#0d0d0d`, `--accent`
+`#0075ff`, `--status-success` `#3ec98a`, …), set in **Archivo** with **JetBrains
+Mono** for machine-written values — the same pairing Codity uses. Radii are kept
+tight (3–6px) for the same reason theirs are: an operations console should read
+as precise. Tokens live in one place, [`tailwind.config.ts`](apps/web/tailwind.config.ts).
+
 Live updates use SSE rather than WebSockets — the feed is strictly
 server→client, so `EventSource` (which reconnects natively) is the right tool.
 Because `EventSource` cannot set an `Authorization` header, the `/events`

@@ -8,47 +8,62 @@
 
 html,
 body {
-  background-color: #0b0e14;
-  color: #e6e9f0;
+  background-color: #090909;
+  color: #ededed;
+  /* Codity sets slightly tightened tracking on UI text; it is most of what
+     makes Archivo read as theirs rather than as a generic grotesque. */
+  letter-spacing: -0.011em;
 }
 
-/* Thin, unobtrusive scrollbars that match the dark surface. */
+/* Thin, unobtrusive scrollbars that match the near-black surface. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2b3245 transparent;
+  scrollbar-color: #303030 transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #2b3245;
-  border-radius: 8px;
+  background: #303030;
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #3d3d3d;
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-border bg-panel;
+    @apply rounded-lg border border-border bg-panel;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-border
-      bg-panel2 px-3 py-1.5 text-sm font-medium text-fg transition-colors
-      hover:bg-border disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded border border-border
+      bg-panel2 px-3 py-1.5 text-sm font-medium text-fg transition-colors duration-150
+      hover:border-strong hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-brand {
-    @apply border-transparent bg-brand text-white hover:bg-brand/85;
+    @apply border-transparent bg-brand text-white hover:bg-brand-hover
+      active:bg-brand-active;
   }
   .btn-danger {
     @apply border-transparent bg-danger/90 text-white hover:bg-danger;
   }
   .input {
-    @apply rounded-lg border border-border bg-panel2 px-3 py-1.5 text-sm text-fg
-      outline-none placeholder:text-muted focus:border-brand;
+    @apply rounded border border-border bg-panel2 px-3 py-1.5 text-sm text-fg
+      outline-none transition-colors placeholder:text-faint
+      focus:border-brand focus:ring-1 focus:ring-brand/40;
   }
   .th {
     @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted;
   }
   .td {
     @apply px-3 py-2 text-sm;
+  }
+
+  /* Machine-written values -- ids, cron expressions, tokens, durations -- are
+     set in JetBrains Mono so they are visually separable from prose at a
+     glance. Codity does the same throughout their dashboard. */
+  .mono {
+    @apply font-mono text-[0.8125rem] tracking-tight;
   }
 }
