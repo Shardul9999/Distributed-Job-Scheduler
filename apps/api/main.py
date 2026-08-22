@@ -14,8 +14,10 @@ from apps.api.core.logging import RequestContextMiddleware, configure_logging
 from apps.api.routers import (
     auth,
     dlq,
+    events,
     health,
     jobs,
+    metrics,
     organizations,
     projects,
     queues,
@@ -91,6 +93,8 @@ app.include_router(jobs.router, prefix=settings.api_prefix)
 app.include_router(schedules.router, prefix=settings.api_prefix)
 app.include_router(dlq.router, prefix=settings.api_prefix)
 app.include_router(workers.router, prefix=settings.api_prefix)
+app.include_router(metrics.router, prefix=settings.api_prefix)
+app.include_router(events.router, prefix=settings.api_prefix)
 
 
 @app.get("/", include_in_schema=False)

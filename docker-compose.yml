@@ -168,5 +168,29 @@ services:
     stop_grace_period: 15s
     restart: unless-stopped
 
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: codity-web
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      # As seen from the *browser*, not from inside the container: the dashboard
+      # calls the API directly over CORS at the host-exposed port. The API
+      # already allow-lists http://localhost:3000.
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000/api/v1}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      # Live source for dev autoreload, but keep the container's own Linux-built
+      # node_modules and .next -- the host copies are Windows binaries (sharp,
+      # the Next SWC toolchain) and would break inside the Alpine container.
+      - ./apps/web:/app/web
+      - /app/web/node_modules
+      - /app/web/.next
+    restart: unless-stopped
+
 volumes:
   postgres_data:

@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: #0b0e14;
+  color: #e6e9f0;
+}
+
+/* Thin, unobtrusive scrollbars that match the dark surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2b3245 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2b3245;
+  border-radius: 8px;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-border bg-panel;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-border
+      bg-panel2 px-3 py-1.5 text-sm font-medium text-fg transition-colors
+      hover:bg-border disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-brand {
+    @apply border-transparent bg-brand text-white hover:bg-brand/85;
+  }
+  .btn-danger {
+    @apply border-transparent bg-danger/90 text-white hover:bg-danger;
+  }
+  .input {
+    @apply rounded-lg border border-border bg-panel2 px-3 py-1.5 text-sm text-fg
+      outline-none placeholder:text-muted focus:border-brand;
+  }
+  .th {
+    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted;
+  }
+  .td {
+    @apply px-3 py-2 text-sm;
+  }
+}

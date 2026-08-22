@@ -24,6 +24,7 @@ all migrations, and starts serving.
 
 | What | Where |
 |---|---|
+| **Dashboard** | http://localhost:3000 |
 | API | http://localhost:8000 |
 | Interactive API docs (Swagger) | http://localhost:8000/docs |
 | Alternative docs (ReDoc) | http://localhost:8000/redoc |
@@ -67,6 +68,44 @@ curl -X POST "http://localhost:8000/api/v1/orgs/$ORG/projects" \
   -H 'Content-Type: application/json' \
   -d '{"name": "Email Pipeline", "description": "Transactional email jobs"}'
 ```
+
+---
+
+## Dashboard
+
+The web dashboard at **http://localhost:3000** is the operator's view of the
+whole system: throughput and latency charts, queue depth, the live worker fleet,
+cron schedules, and the dead-letter queue — all updating live over Server-Sent
+Events.
+
+To see it populated, seed a demo tenant with queues, a cron schedule, and a
+realistic job mix (fast successes, retries that recover, failures that
+dead-letter):
+
+```bash
+python scripts/seed.py
+```
+
+The script uses only the Python standard library and talks to the API over
+HTTP, so it needs no dependencies. It prints the demo login when it finishes:
+
+| | |
+|---|---|
+| URL | http://localhost:3000 |
+| Email | `demo@codity.dev` |
+| Password | `demodemo123` |
+
+Six pages: **Overview** (live metrics + charts), **Queues** (depth, pause /
+resume), **Job Explorer** (filter, keyset paging, per-job execution history and
+logs, retry / cancel), **Workers** (fleet with heartbeat freshness),
+**Schedules** (cron entries, next fire time, manual trigger), and **Dead
+Letters** (failure inspection and replay).
+
+Live updates use SSE rather than WebSockets — the feed is strictly
+server→client, so `EventSource` (which reconnects natively) is the right tool.
+Because `EventSource` cannot set an `Authorization` header, the `/events`
+endpoint accepts the access token as a query parameter, validated exactly as the
+header form is.
 
 ---
 
@@ -130,7 +169,7 @@ packages/
   db/             SQLAlchemy models, enums, session, Alembic migrations
 tests/            pytest suite, incl. the 10-worker concurrency test
 docs/             plan, architecture, ER diagram, design decisions
-scripts/          container entrypoint
+scripts/          container entrypoint, demo seed script
 ```
 
 ---
@@ -238,7 +277,7 @@ underlying table is being written to concurrently.
 | Day | Scope | State |
 |---|---|---|
 | 0 | Scaffold, 13-table schema, migrations, auth, orgs, projects | **Done** |
-| 1 | Queue + job APIs, atomic claim query, worker service | Next |
-| 2 | Retries, DLQ, cron scheduler, reaper, concurrency tests | |
-| 3 | Dashboard, SSE live updates, charts | |
-| 4 | Diagrams, design decisions, API docs, bonuses | |
+| 1 | Queue + job APIs, atomic claim query, worker service | **Done** |
+| 2 | Retries, DLQ, cron scheduler, reaper, concurrency tests | **Done** |
+| 3 | Dashboard, SSE live updates, charts, metrics endpoints | **Done** |
+| 4 | Diagrams, design decisions, API docs, bonuses | Next |

@@ -3,7 +3,7 @@
 **Read this first when resuming work.** It records exactly where the build is,
 what is verified, and what comes next. Updated at the end of each day.
 
-Last updated: **22 Aug 2026 — Day 2 COMPLETE**
+Last updated: **22 Aug 2026 — Day 3 COMPLETE**
 
 ---
 
@@ -189,11 +189,63 @@ docker compose exec -T -e TEST_DATABASE_URL="postgresql+asyncpg://codity:codity_
 | Cron `* * * * *` in `Asia/Kolkata` | fired on the minute, one job per occurrence |
 | DLQ round trip | exhaust -> entry with payload + stack -> replay -> new job, second replay 409 |
 
+## Day 3 — COMPLETE, committed, pushed
+
+**Backend first — the charts and live feed needed endpoints that did not exist.**
+
+*Metrics* (`apps/api/routers/metrics.py`, `services/metrics_service.py`): three
+global read-only aggregates — `/metrics/throughput` (executions per bucket by
+outcome), `/metrics/latency` (percentile_cont p50/p95/p99 + bucketed line over
+succeeded rows only), `/metrics/health` (recent success/failure + queue-depth by
+status). Time series use PostgreSQL `date_bin` anchored at the epoch so buckets
+don't jitter between refreshes, and are **gap-filled in Python** so an idle
+bucket is a zero, not a hole. Served by the `idx_exec_metrics` index built Day 0.
+
+*SSE* (`apps/api/routers/events.py`): `GET /events` streams a whole-system
+snapshot (fleet + 5-min health) every `interval` seconds via `StreamingResponse`.
+`EventSource` can't set headers, so the access token rides in `?token=` and is
+validated exactly as the header form. A short session per tick — a dashboard left
+open overnight must not pin a pooled connection.
+
+**Frontend** — `apps/web/`, Next.js 15 App Router · Tailwind · TanStack Query ·
+Recharts. Six pages: Overview (SSE tiles + throughput/depth/latency charts),
+Queues (stats + pause/resume), Job Explorer (filter, keyset paging, detail
+drawer with executions/logs/retry/cancel), Workers (fleet + heartbeat
+freshness), Schedules (cron + trigger/toggle), Dead Letters (inspect + replay,
+renders `ai_summary` when present). One shared `EventSource` in `AppShell`;
+project switcher in the sidebar (register creates an org but no project, so the
+switcher + empty states matter). shadcn/ui was planned but its interactive CLI
+init doesn't belong in a one-command repo — primitives are hand-rolled in
+`components/ui.tsx`. `npm run build` is clean: 10 routes, no type errors.
+
+**Compose:** `web` service (`apps/web/Dockerfile`, node:24-alpine, `next dev`).
+Host `node_modules` are Windows-native, so the container keeps its own via
+anonymous volumes on `/app/web/node_modules` and `/app/web/.next`.
+`NEXT_PUBLIC_API_BASE` points the browser at the host API port (CORS already
+allows `:3000`).
+
+**Seed script** (`scripts/seed.py`, stdlib only, hits the API): stands up
+`demo@codity.dev` / `demodemo123` → project `Production` → 3 queues → a
+`* * * * *` schedule → 71 jobs (echo, sleep, fail-then-recover, always-fail).
+Re-runnable. Nominally a Day 4 item, built now because the Day 3 gate is
+"dashboard drives the system" and it needs data to drive.
+
+**Verified live:**
+
+| Check | Result |
+|---|---|
+| `npm run build` | 10 routes, 0 type errors |
+| web + api + 3 workers + 2 schedulers up | dashboard serves 200; SSE emits snapshots every 2s |
+| seed → drain | 67 completed (40 echo + 18 sleep + 8 recovered + 1 cron), 5 dead |
+| DLQ | 5 entries, `RuntimeError: Recipient address rejected`, replayable |
+| cron `minute-heartbeat` | fired on the minute, `last_run` advances |
+| throughput / latency | 30 non-empty buckets; 97 samples, p50 20ms / p95 1.9s |
+| SSE auth | bad/missing token → 401/422 |
+
 ## Remaining days
 
 | Day | Scope | Gate |
 |---|---|---|
-| 3 (Aug 24) | Six dashboard pages, SSE, charts | Dashboard drives the system |
 | 4 (Aug 25 AM) | ARCHITECTURE.md, ER-DIAGRAM.md, DESIGN-DECISIONS.md, API docs, bonuses | Submit |
 
 **Hard rule:** cut frontend scope before cutting reliability work. Frontend is
@@ -214,3 +266,10 @@ dedicated connection · lost-attempt consumes a retry while a released one does
 not · cron skip-vs-backfill · occurrence idempotency keys · per-schedule IANA
 timezone vs stored UTC offset · `pg_locks` as liveness vs a scheduler heartbeat ·
 heartbeat retention by batched DELETE, with pg_partman as the scale-out path.
+
+Added Day 3: SSE vs WebSockets for a unidirectional feed · SSE auth via query
+token (EventSource header limitation) and why it isn't a weakening · metrics as
+`date_bin` aggregates gap-filled in the app vs `generate_series` in SQL ·
+percentiles over succeeded-only rows · short session per SSE tick vs one held for
+the stream's life · dashboard calls the API directly over CORS vs a Next.js proxy
+rewrite · keyset paging surfaced as a prev/next cursor stack in the client.
