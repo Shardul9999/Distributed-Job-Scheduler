@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     groq_api_key: str = Field(default="")
     groq_model: str = Field(default="llama-3.1-8b-instant")
     gemini_api_key: str = Field(default="")
-    gemini_model: str = Field(default="gemini-2.0-flash")
+    gemini_model: str = Field(default="gemini-2.5-flash-lite")
     ai_summary_timeout_s: float = Field(default=12.0)
 
     @property
