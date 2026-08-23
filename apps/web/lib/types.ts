@@ -37,11 +37,23 @@ export interface User {
   created_at: string;
 }
 
+/** Ranked `viewer < member < admin < owner`, matching `OrgRole` on the API. */
+export type OrgRole = "owner" | "admin" | "member" | "viewer";
+
 export interface OrgMembership {
   org_id: string;
   org_name: string;
   org_slug: string;
-  role: "owner" | "admin" | "member" | "viewer";
+  role: OrgRole;
+}
+
+/** A row of `GET /orgs/{org_id}/members`. */
+export interface Member {
+  user_id: string;
+  email: string;
+  full_name: string;
+  role: OrgRole;
+  joined_at: string;
 }
 
 /** `GET /auth/me`. The user is nested, not at the top level -- this shape is

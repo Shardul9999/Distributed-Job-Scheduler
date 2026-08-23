@@ -53,6 +53,13 @@ and the caller's role together, so ranking the role costs no extra round trip.
 The `Min role` column on each table below is the floor for that route. Reads
 inside an organization are open to `viewer` throughout.
 
+**Administering roles is separately constrained.** Clearing the `admin` bar is
+not enough to hand out any role: nobody may grant a role above their own, and
+nobody may modify or remove a member who outranks them. Equal rank is allowed,
+so an admin can promote to `admin` and demote another `admin`. Both refusals are
+`403`. Without these, an admin could promote themselves to `owner` and remove
+the founder — see `DESIGN-DECISIONS.md` section 31a.
+
 **Scope note.** `/fleet/stats`, `/workers`, `/metrics/*` and `/events` require a
 valid token but are **not** tenant-scoped -- they report on the worker fleet and
 system-wide execution health, which is infrastructure rather than tenant data.
@@ -125,7 +132,7 @@ duplicate.
 | PATCH | `/api/v1/orgs/{org_id}` | admin |
 | DELETE | `/api/v1/orgs/{org_id}` | owner |
 | GET / POST | `/api/v1/orgs/{org_id}/members` | member / admin |
-| PATCH / DELETE | `/api/v1/orgs/{org_id}/members/{user_id}` | admin |
+| PATCH / DELETE | `/api/v1/orgs/{org_id}/members/{user_id}` | admin, and never above or against your own rank |
 | GET / POST | `/api/v1/orgs/{org_id}/projects` | member / member |
 
 ### Projects

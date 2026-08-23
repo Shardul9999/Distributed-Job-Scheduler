@@ -8,7 +8,12 @@ import structlog
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from apps.api.core.errors import ConflictError, NotFoundError, ValidationError
+from apps.api.core.errors import (
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from apps.api.schemas.organization import (
     MemberAddRequest,
     OrganizationCreate,
@@ -16,6 +21,7 @@ from apps.api.schemas.organization import (
 )
 from apps.api.services.slugs import unique_slug
 from packages.db import Organization, OrganizationMember, OrgRole, Project, User
+from packages.db.enums import outranks
 
 log = structlog.get_logger(__name__)
 
@@ -146,10 +152,40 @@ async def list_members(db: AsyncSession, org_id: uuid.UUID) -> list[dict]:
     ]
 
 
+def _assert_may_grant(actor: OrgRole, granted: OrgRole) -> None:
+    """Nobody may hand out a role above their own.
+
+    Without this an `admin` can simply set their own row to `owner`, and the
+    last-owner guard below does not help: once there are two owners, demoting
+    or removing the original is permitted. That is a full takeover of the
+    organization by anyone trusted enough to manage members.
+    """
+    if outranks(granted, actor):
+        raise AuthorizationError(
+            f"You cannot grant the {granted.value} role; it is above your own "
+            f"({actor.value})"
+        )
+
+
+def _assert_may_target(actor: OrgRole, target: OrgRole) -> None:
+    """Nobody may change or remove a member who outranks them.
+
+    The mirror of the rule above: blocking upward grants is pointless if an
+    admin can instead demote every owner out of the way.
+    """
+    if outranks(target, actor):
+        raise AuthorizationError(
+            f"You cannot modify a member with the {target.value} role; it is "
+            f"above your own ({actor.value})"
+        )
+
+
 async def add_member(
-    db: AsyncSession, org_id: uuid.UUID, payload: MemberAddRequest
+    db: AsyncSession, org_id: uuid.UUID, payload: MemberAddRequest, actor: OrgRole
 ) -> dict:
     """Add an existing user to an organization by email."""
+    _assert_may_grant(actor, payload.role)
+
     user = await db.scalar(select(User).where(User.email == payload.email.lower()))
     if user is None:
         raise NotFoundError(
@@ -185,11 +221,18 @@ async def _count_owners(db: AsyncSession, org_id: uuid.UUID) -> int:
 
 
 async def update_member_role(
-    db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID, role: OrgRole
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role: OrgRole,
+    actor: OrgRole,
 ) -> None:
     membership = await db.get(OrganizationMember, (org_id, user_id))
     if membership is None:
         raise NotFoundError("That user is not a member of this organization")
+
+    _assert_may_grant(actor, role)
+    _assert_may_target(actor, membership.role)
 
     # An organization with no owner is unadministrable: nobody can add members,
     # change roles, or delete it. Block the demotion that would cause it.
@@ -205,11 +248,13 @@ async def update_member_role(
 
 
 async def remove_member(
-    db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID, actor: OrgRole
 ) -> None:
     membership = await db.get(OrganizationMember, (org_id, user_id))
     if membership is None:
         raise NotFoundError("That user is not a member of this organization")
+
+    _assert_may_target(actor, membership.role)
 
     if membership.role == OrgRole.OWNER and await _count_owners(db, org_id) <= 1:
         raise ValidationError(

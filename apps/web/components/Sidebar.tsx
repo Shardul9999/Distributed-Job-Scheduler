@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { Dot } from "./ui";
+import { RoleBadge } from "./RoleBadge";
 import {
   IconChevron,
   IconDeadLetters,
@@ -12,6 +13,7 @@ import {
   IconQueues,
   IconSchedules,
   IconSignOut,
+  IconTeam,
   IconWorkers,
 } from "./icons";
 
@@ -22,11 +24,12 @@ const NAV = [
   { href: "/workers", label: "Workers", Icon: IconWorkers },
   { href: "/schedules", label: "Schedules", Icon: IconSchedules },
   { href: "/dlq", label: "Dead Letters", Icon: IconDeadLetters },
+  { href: "/team", label: "Team", Icon: IconTeam },
 ];
 
 export function Sidebar({ connected }: { connected: boolean }) {
   const pathname = usePathname();
-  const { me, projects, projectId, setProjectId, logout } = useAuth();
+  const { me, projects, projectId, setProjectId, logout, role } = useAuth();
 
   return (
     // The rail sits on the same near-black as the content it navigates; a
@@ -103,8 +106,11 @@ export function Sidebar({ connected }: { connected: boolean }) {
           <Dot tone={connected ? "ok" : "warn"} pulse={connected} />
           {connected ? "Live" : "Reconnecting…"}
         </div>
-        <div className="truncate text-[11px] text-muted" title={me?.user.email}>
-          {me?.user.full_name ?? me?.user.email ?? "—"}
+        <div className="flex items-center justify-between gap-2">
+          <div className="truncate text-[11px] text-muted" title={me?.user.email}>
+            {me?.user.full_name ?? me?.user.email ?? "—"}
+          </div>
+          {role && <RoleBadge role={role} />}
         </div>
         <button className="btn w-full" onClick={logout}>
           <IconSignOut className="h-3.5 w-3.5" />

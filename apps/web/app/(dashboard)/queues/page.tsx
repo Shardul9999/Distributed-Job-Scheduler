@@ -12,6 +12,8 @@ import type { Queue } from "@/lib/types";
 
 function QueueRow({ queue }: { queue: Queue }) {
   const stats = useQueueStats(queue.id);
+  const { can } = useAuth();
+  const canWrite = can("member");
   const { pause, resume } = useQueueMutations();
   const paused = stats.data?.is_paused ?? queue.is_paused;
   const busy = pause.isPending || resume.isPending;
@@ -51,7 +53,8 @@ function QueueRow({ queue }: { queue: Queue }) {
       <td className="td text-right">
         <button
           className="btn"
-          disabled={busy}
+          disabled={busy || !canWrite}
+          title={canWrite ? undefined : "Requires the member role"}
           onClick={() =>
             paused ? resume.mutate(queue.id) : pause.mutate(queue.id)
           }

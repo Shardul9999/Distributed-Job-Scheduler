@@ -12,7 +12,9 @@ import type {
   JobLog,
   LatencyResponse,
   Me,
+  Member,
   Organization,
+  OrgRole,
   Page,
   Project,
   Queue,
@@ -116,6 +118,23 @@ export const api = {
   // --- tenancy ---
   orgs: () => request<Organization[]>("/orgs"),
   projects: (orgId: string) => request<Project[]>(`/orgs/${orgId}/projects`),
+
+  // --- members (RBAC) ---
+  // Reading the roster is open to any member; every mutation below requires
+  // admin and is refused server-side regardless of what the UI renders.
+  members: (orgId: string) => request<Member[]>(`/orgs/${orgId}/members`),
+  addMember: (orgId: string, email: string, role: OrgRole) =>
+    request<Member>(`/orgs/${orgId}/members`, {
+      method: "POST",
+      body: { email, role },
+    }),
+  updateMemberRole: (orgId: string, userId: string, role: OrgRole) =>
+    request<{ message: string }>(`/orgs/${orgId}/members/${userId}`, {
+      method: "PATCH",
+      body: { role },
+    }),
+  removeMember: (orgId: string, userId: string) =>
+    request<void>(`/orgs/${orgId}/members/${userId}`, { method: "DELETE" }),
 
   // --- queues ---
   queues: (projectId: string) =>

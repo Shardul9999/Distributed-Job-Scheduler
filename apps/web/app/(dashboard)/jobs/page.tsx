@@ -39,6 +39,8 @@ function JobDetail({
   onClose: () => void;
 }) {
   const detail = useJobDetail(projectId, jobId);
+  const { can } = useAuth();
+  const canWrite = can("member");
   const { retry, cancel } = useJobMutations(projectId);
 
   const job = detail.data?.job;
@@ -72,14 +74,16 @@ function JobDetail({
           <div className="flex gap-2">
             <button
               className="btn btn-brand"
-              disabled={!canRetry || retry.isPending}
+              disabled={!canRetry || !canWrite || retry.isPending}
+              title={canWrite ? undefined : "Requires the member role"}
               onClick={() => retry.mutate(job.id)}
             >
               Retry
             </button>
             <button
               className="btn"
-              disabled={!canCancel || cancel.isPending}
+              disabled={!canCancel || !canWrite || cancel.isPending}
+              title={canWrite ? undefined : "Requires the member role"}
               onClick={() => cancel.mutate(job.id)}
             >
               Cancel

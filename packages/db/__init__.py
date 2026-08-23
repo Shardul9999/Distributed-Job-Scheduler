@@ -9,6 +9,7 @@ from packages.db.enums import (
     JobStatus,
     LogLevel,
     OrgRole,
+    ROLE_RANK,
     RetryStrategy,
     WorkerStatus,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "JobStatus",
     "LogLevel",
     "OrgRole",
+    "ROLE_RANK",
     "RetryStrategy",
     "WorkerStatus",
     # models

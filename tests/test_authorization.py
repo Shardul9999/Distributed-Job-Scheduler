@@ -327,3 +327,127 @@ async def test_refresh_token_is_not_an_access_token(client: AsyncClient) -> None
     refresh = r.json()["refresh_token"]
 
     assert (await client.get(f"{API}/orgs", headers=_auth(refresh))).status_code == 401
+
+
+# =============================================================================
+# Role administration
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_grant_a_role_above_their_own(
+    client: AsyncClient, tenant: dict
+) -> None:
+    """The escalation this suite exists to prevent.
+
+    Without the grant rule, an `admin` sets their own row to `owner` — and the
+    last-owner guard does not help, because once there are two owners, demoting
+    or removing the original is permitted. That is a full takeover of the
+    organization by anyone trusted enough to manage members.
+    """
+    org = tenant["org"]
+    admin_h = _auth(tenant["tokens"]["admin"])
+    roster = (await client.get(f"{API}/orgs/{org}/members", headers=admin_h)).json()
+    by_role = {m["role"]: m["user_id"] for m in roster}
+
+    # Promote self.
+    r = await client.patch(
+        f"{API}/orgs/{org}/members/{by_role['admin']}",
+        headers=admin_h,
+        json={"role": "owner"},
+    )
+    assert r.status_code == 403, r.text
+
+    # Promote someone else as a proxy.
+    r = await client.patch(
+        f"{API}/orgs/{org}/members/{by_role['viewer']}",
+        headers=admin_h,
+        json={"role": "owner"},
+    )
+    assert r.status_code == 403, r.text
+
+    # Invite a fresh owner from outside.
+    _, outsider_email = await _register(client, "outsider")
+    r = await client.post(
+        f"{API}/orgs/{org}/members",
+        headers=admin_h,
+        json={"email": outsider_email, "role": "owner"},
+    )
+    assert r.status_code == 403, r.text
+
+    after = (await client.get(f"{API}/orgs/{org}/members", headers=admin_h)).json()
+    assert sorted(m["role"] for m in after) == sorted(m["role"] for m in roster)
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_touch_a_member_who_outranks_them(
+    client: AsyncClient, tenant: dict
+) -> None:
+    """The mirror rule. Blocking upward grants is pointless if an admin can
+    instead demote or delete every owner out of the way."""
+    org = tenant["org"]
+    admin_h = _auth(tenant["tokens"]["admin"])
+    roster = (await client.get(f"{API}/orgs/{org}/members", headers=admin_h)).json()
+    owner_id = next(m["user_id"] for m in roster if m["role"] == "owner")
+
+    r = await client.patch(
+        f"{API}/orgs/{org}/members/{owner_id}",
+        headers=admin_h,
+        json={"role": "viewer"},
+    )
+    assert r.status_code == 403, r.text
+
+    r = await client.delete(f"{API}/orgs/{org}/members/{owner_id}", headers=admin_h)
+    assert r.status_code == 403, r.text
+
+    after = (await client.get(f"{API}/orgs/{org}/members", headers=admin_h)).json()
+    assert any(m["role"] == "owner" for m in after), "the owner was removed"
+
+
+@pytest.mark.asyncio
+async def test_admin_may_still_administer_at_or_below_their_rank(
+    client: AsyncClient, tenant: dict
+) -> None:
+    """The guard must not break the job an admin is there to do."""
+    org = tenant["org"]
+    admin_h = _auth(tenant["tokens"]["admin"])
+    roster = (await client.get(f"{API}/orgs/{org}/members", headers=admin_h)).json()
+    viewer_id = next(m["user_id"] for m in roster if m["role"] == "viewer")
+
+    for role in ("member", "admin", "viewer"):
+        r = await client.patch(
+            f"{API}/orgs/{org}/members/{viewer_id}",
+            headers=admin_h,
+            json={"role": role},
+        )
+        assert r.status_code == 200, f"admin -> {role}: {r.status_code} {r.text}"
+
+    _, email = await _register(client, "recruit")
+    r = await client.post(
+        f"{API}/orgs/{org}/members",
+        headers=admin_h,
+        json={"email": email, "role": "member"},
+    )
+    assert r.status_code == 201, r.text
+    r = await client.delete(
+        f"{API}/orgs/{org}/members/{r.json()['user_id']}", headers=admin_h
+    )
+    assert r.status_code == 204, r.text
+
+
+@pytest.mark.asyncio
+async def test_last_owner_cannot_be_stranded(client: AsyncClient, tenant: dict) -> None:
+    """An organization with no owner is unadministrable — nobody could add
+    members, change roles, or delete it."""
+    org = tenant["org"]
+    owner_h = _auth(tenant["tokens"]["owner"])
+    roster = (await client.get(f"{API}/orgs/{org}/members", headers=owner_h)).json()
+    owner_id = next(m["user_id"] for m in roster if m["role"] == "owner")
+
+    r = await client.patch(
+        f"{API}/orgs/{org}/members/{owner_id}", headers=owner_h, json={"role": "admin"}
+    )
+    assert r.status_code == 422, r.text
+
+    r = await client.delete(f"{API}/orgs/{org}/members/{owner_id}", headers=owner_h)
+    assert r.status_code == 422, r.text

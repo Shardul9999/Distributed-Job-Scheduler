@@ -6,7 +6,8 @@ import { useScheduleMutations, useSchedules } from "@/lib/hooks";
 import { relativeTime } from "@/lib/format";
 
 export default function SchedulesPage() {
-  const { projectId } = useAuth();
+  const { projectId, can } = useAuth();
+  const canWrite = can("member");
   const schedules = useSchedules(projectId);
   const { toggle, trigger } = useScheduleMutations(projectId);
 
@@ -58,14 +59,16 @@ export default function SchedulesPage() {
                       <div className="flex justify-end gap-2">
                         <button
                           className="btn"
-                          disabled={trigger.isPending}
+                          disabled={!canWrite || trigger.isPending}
+                          title={canWrite ? undefined : "Requires the member role"}
                           onClick={() => trigger.mutate(s.id)}
                         >
                           Run now
                         </button>
                         <button
                           className="btn"
-                          disabled={toggle.isPending}
+                          disabled={!canWrite || toggle.isPending}
+                          title={canWrite ? undefined : "Requires the member role"}
                           onClick={() =>
                             toggle.mutate({ id: s.id, is_active: !s.is_active })
                           }

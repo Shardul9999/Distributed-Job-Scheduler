@@ -31,6 +31,25 @@ class OrgRole(str, enum.Enum):
     VIEWER = "viewer"
 
 
+#: Privilege ordering. A check for MEMBER is satisfied by ADMIN and OWNER.
+#:
+#: Lives beside the enum rather than inside the API's dependency module because
+#: two separate rules need it: "may you perform this action?" (authorization)
+#: and "may you grant or revoke this role?" (administration). Keeping one
+#: ordering means those two can never disagree about which role outranks which.
+ROLE_RANK: dict[OrgRole, int] = {
+    OrgRole.VIEWER: 0,
+    OrgRole.MEMBER: 1,
+    OrgRole.ADMIN: 2,
+    OrgRole.OWNER: 3,
+}
+
+
+def outranks(a: OrgRole, b: OrgRole) -> bool:
+    """True when `a` sits strictly above `b`."""
+    return ROLE_RANK[a] > ROLE_RANK[b]
+
+
 class RetryStrategy(str, enum.Enum):
     """Backoff curve applied between attempts.
 

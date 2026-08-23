@@ -378,6 +378,37 @@ addressed by an id with no `project_id` in the path — exactly the shape the
 original single-scope dependency could not cover. `tests/test_authorization.py`
 now regression-tests it.
 
+### 31a. Role administration — you cannot grant, or touch, above your own rank
+
+Enforcing a minimum role on an action is only half of RBAC. The other half is
+who may hand the roles out, and it is the half that is usually missed.
+
+`PATCH /orgs/{id}/members/{user}` requires `admin`. Nothing more was needed to
+take an organization over completely: an admin set **their own** row to `owner`,
+which made two owners, which meant the last-owner guard no longer applied — then
+demoted the founder to `viewer` and removed them. Reproduced end to end against
+the running stack; the founder finished the sequence as a non-member of the
+organization they created.
+
+Two rules close it, both in `org_service`:
+
+- **`_assert_may_grant`** — nobody may hand out a role above their own. An admin
+  may grant up to `admin`.
+- **`_assert_may_target`** — nobody may modify or remove a member who outranks
+  them. Blocking upward grants alone is pointless if an admin can demote every
+  owner out of the way instead.
+
+Equal rank is deliberately allowed: an admin may promote to `admin` and demote
+another `admin`, because peers administering peers is the normal case and
+forbidding it would leave an organization needing its owner for routine work.
+
+The two rules need the *actor's* rank, not just the fact that they cleared the
+bar, so the member routes bind `require_role(...)`'s return value instead of
+discarding it via `dependencies=[...]`. The ranking itself moved to
+`packages/db/enums.py` beside `OrgRole` — authorization and administration must
+never disagree about which role outranks which, and one table is how that is
+guaranteed.
+
 ### 32. AI failure summaries — provider-agnostic, lazy, best-effort
 
 A dead-lettered job's stack trace is summarised into one plain-English cause on
@@ -411,7 +442,7 @@ were *decided against*, not missed, and each has a decision recorded above:
 | 4 | Queue sharding | **Scoped out.** Single-queue-per-row throughput is far from the ceiling at this scale; the partial claim index (§26) is what keeps claim latency flat, and sharding would add routing complexity for no measured gain. |
 | 5 | Event-driven execution | **Scoped out, with the path documented** (§10). The claim loop polls with idle backoff (100 ms → 2 s) because polling is trivially correct and self-healing; `LISTEN/NOTIFY` is named as the first optimisation if enqueue-to-start latency ever becomes the metric. |
 | 6 | WebSocket live updates | **Delivered by a different transport** (§20, §21). The dashboard *does* update live — via **SSE**, chosen deliberately because the data flow is server→client only. WebSockets would add a full-duplex channel to a half-duplex problem. The bonus's intent (live updates) is met; its named mechanism was rejected for a stated reason. |
-| 7 | Role-based access control | **Built** (§31) — ranked roles enforced at org, project, queue and policy scope by dependencies that run before the handler. |
+| 7 | Role-based access control | **Built** (§31, §31a) — ranked roles enforced at org, project, queue and policy scope, plus grant/target rules so the role system cannot be used to escalate out of itself. |
 | 8 | AI-generated failure summaries | **Built** (§32) — provider-agnostic, lazy, best-effort. |
 
 Naming what was chosen against — and why — is the point: five of these are

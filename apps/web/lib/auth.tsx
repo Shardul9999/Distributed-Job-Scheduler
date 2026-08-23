@@ -14,7 +14,20 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { api, getToken, setToken } from "./api";
-import type { Me, Organization, Project } from "./types";
+import type { Me, Organization, OrgRole, Project } from "./types";
+
+/** Privilege ordering, mirroring `_ROLE_RANK` in `apps/api/core/deps.py`.
+ *
+ *  The client copy exists to decide what to *render*; the server copy decides
+ *  what is *permitted*. They must agree, but the UI one is a courtesy -- hiding
+ *  a button is not a security boundary, and every guarded action is refused
+ *  again server-side. */
+const RANK: Record<OrgRole, number> = {
+  viewer: 0,
+  member: 1,
+  admin: 2,
+  owner: 3,
+};
 
 const PROJECT_KEY = "codity.project_id";
 
@@ -25,6 +38,10 @@ interface AuthState {
   projects: Project[];
   projectId: string | null;
   project: Project | null;
+  /** The caller's role in the organization owning the selected project. */
+  role: OrgRole | null;
+  /** True when that role meets `minimum`. Used to gate write controls. */
+  can: (minimum: OrgRole) => boolean;
   setProjectId: (id: string) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -101,20 +118,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push("/login");
   }
 
-  const value = useMemo<AuthState>(
-    () => ({
+  const value = useMemo<AuthState>(() => {
+    const project = projects.find((p) => p.id === projectId) ?? null;
+    // Role is a property of the organization, and the project switcher spans
+    // every org the user belongs to -- so it is resolved from the *selected*
+    // project's org rather than read once at login.
+    const role =
+      me?.organizations.find((o) => o.org_id === project?.org_id)?.role ?? null;
+
+    return {
       ready,
       me,
       orgs,
       projects,
       projectId,
-      project: projects.find((p) => p.id === projectId) ?? null,
+      project,
+      role,
+      can: (minimum) => (role === null ? false : RANK[role] >= RANK[minimum]),
       setProjectId,
       login,
       logout,
-    }),
-    [ready, me, orgs, projects, projectId],
-  );
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, me, orgs, projects, projectId]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

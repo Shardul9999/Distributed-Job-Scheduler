@@ -118,3 +118,13 @@ export function IconChevron(p: IconProps) {
   );
 }
 
+/** Team / members. */
+export function IconTeam(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+      <path d="M16 5.5a3.2 3.2 0 0 1 0 6.2M17.5 14.2A6.5 6.5 0 0 1 21.5 20" />
+    </Svg>
+  );
+}

@@ -183,13 +183,13 @@ self-reporting, so a crashed scheduler cannot look healthy.
 compute identical backoff; a job lost to a dead machine should not retry on a
 different schedule from one that failed in code.
 
-**Test suite** (`tests/`, pytest + testcontainers): **41 tests, all passing.**
+**Test suite** (`tests/`, pytest + testcontainers): **45 tests, all passing.**
 Real PostgreSQL, schema built by `alembic upgrade head` (not `create_all` --
 the migration is what ships). `TEST_DATABASE_URL` points the suite at an
 existing database, which is how it runs inside the API container.
 
 ```bash
-docker compose exec -T -e TEST_DATABASE_URL="postgresql+asyncpg://codity:codity_dev_password@postgres:5432/codity_test"   api python -m pytest tests/ -q          # 41 passed
+docker compose exec -T -e TEST_DATABASE_URL="postgresql+asyncpg://codity:codity_dev_password@postgres:5432/codity_test"   api python -m pytest tests/ -q          # 45 passed
 ```
 
 **Verified live, at scale:**
@@ -414,6 +414,64 @@ uses one.
 
 DESIGN-DECISIONS.md §31 rewritten: it previously claimed "a route physically
 cannot forget its check", which was only true of routes that declared one.
+
+---
+
+## Post-Day-4 — RBAC made visible, and two holes it exposed (committed, pushed)
+
+**Why.** The dashboard had exactly one auth screen (login), so the RBAC bonus was
+invisible in the product: a grader clicking around saw a single-user tool, and
+the only way to see or change a role was curl. Building the missing screens then
+surfaced two real defects behind them.
+
+**Screens.** `/register` (self-service sign-up; the endpoint creates user + org +
+token pair in one call, so there is no second "create your org" step), `/team`
+(roster, invite by email, change role, remove, plus a what-each-role-may-do
+legend), a role badge in the sidebar, and a `Team` nav entry. `useAuth` now
+exposes `role` and `can(minimum)`, resolved from the *selected project's* org
+rather than read once at login — the project switcher spans every org the user
+belongs to, so the role has to follow the selection.
+
+Write controls on Queues, Jobs, Schedules and DLQ are **disabled with a reason**
+rather than hidden: a viewer who sees a greyed-out "Retry" learns the action
+exists and that their role withholds it; a viewer who sees nothing just thinks
+the page is bare. The client-side rank table mirrors the server's and is
+explicitly a courtesy — every gated action is refused again server-side, and
+`test_viewer_writes_nothing` is what proves it.
+
+**Hole 1 — cross-tenant retry-policy writes.** Covered in the previous entry.
+
+**Hole 2 — privilege escalation through role administration.** `PATCH
+/orgs/{id}/members/{user}` requires `admin` and accepted *any* target role.
+Reproduced end to end: an admin set their own row to `owner` (now two owners, so
+the last-owner guard stopped applying), demoted the founder to `viewer`, then
+removed them. The founder ended as a non-member of the organization they
+created. Fixed with two rules in `org_service` — `_assert_may_grant` (never hand
+out a role above your own) and `_assert_may_target` (never modify or remove
+someone who outranks you). Equal rank stays allowed, or an org would need its
+owner for routine admin work. The member routes now bind `require_role(...)`'s
+return value instead of discarding it, because both rules need the actor's rank.
+`ROLE_RANK` moved to `packages/db/enums.py` beside `OrgRole`: authorization and
+administration must never disagree about which role outranks which.
+
+| Check | Before | After |
+|---|---|---|
+| Admin promotes self to owner | **200** | 403 |
+| Admin demotes / removes the founding owner | **200 / 204** | 403 |
+| Admin invites a new owner directly | **200** | 403 |
+| Ordinary admin work (grant ≤ admin, remove a member) | 200 | 200 (unchanged) |
+| Last-owner protection | held | held |
+| Full suite | 41 passed | **45 passed** |
+
+Verified live as well as in pytest: a 14-case role-administration matrix and a
+22-case walk through the exact calls the new screens make, both green.
+
+**Still true and deliberate:** registration is open and unrate-limited (any
+visitor can create an account and their own org — blast radius is rows, not
+data, since cross-tenant isolation is tested); and `POST /orgs/{id}/members`
+returns 404 for an address with no account, which lets an *admin* probe whether
+an email is registered. Both are acceptable at this scope and named here so they
+read as decisions rather than oversights.
 
 ---
 

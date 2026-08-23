@@ -25,6 +25,8 @@ function DlqDetail({
   projectId: string;
   onClose: () => void;
 }) {
+  const { can } = useAuth();
+  const canWrite = can("member");
   const { replay, discard } = useDlqMutations(projectId);
   // Re-fetch the entry on open. The list row is already complete enough to
   // render instantly (so the drawer never flashes empty), but only the detail
@@ -54,7 +56,8 @@ function DlqDetail({
         <div className="flex gap-2">
           <button
             className="btn btn-brand"
-            disabled={replayed || replay.isPending}
+            disabled={replayed || !canWrite || replay.isPending}
+            title={canWrite ? undefined : "Requires the member role"}
             onClick={() =>
               replay.mutate(entry.id, { onSuccess: onClose })
             }
@@ -63,7 +66,8 @@ function DlqDetail({
           </button>
           <button
             className="btn btn-danger"
-            disabled={discard.isPending}
+            disabled={!canWrite || discard.isPending}
+            title={canWrite ? undefined : "Requires the member role"}
             onClick={() => discard.mutate(entry.id, { onSuccess: onClose })}
           >
             Discard

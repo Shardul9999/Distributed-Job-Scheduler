@@ -647,7 +647,7 @@
         "tags": [
           "organizations"
         ],
-        "summary": "Change a member's role (admin+)",
+        "summary": "Change a member's role (admin+, and never above your own)",
         "operationId": "update_member_api_v1_orgs__org_id__members__user_id__patch",
         "security": [
           {
@@ -735,7 +735,7 @@
         "tags": [
           "organizations"
         ],
-        "summary": "Remove a member (admin+)",
+        "summary": "Remove a member (admin+, and never one who outranks you)",
         "operationId": "remove_member_api_v1_orgs__org_id__members__user_id__delete",
         "security": [
           {

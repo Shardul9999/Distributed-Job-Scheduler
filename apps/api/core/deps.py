@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.core.errors import AuthenticationError, AuthorizationError, NotFoundError
 from apps.api.core.security import TokenError, decode_token
 from packages.db import (
+    ROLE_RANK,
     Organization,
     OrganizationMember,
     OrgRole,
@@ -76,15 +77,11 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 # Organization access
 # =============================================================================
 
-#: Privilege ordering. A check for MEMBER is satisfied by ADMIN and OWNER.
 #: Ranking roles rather than comparing them for equality is what keeps
-#: authorization checks from turning into long membership tests.
-_ROLE_RANK: dict[OrgRole, int] = {
-    OrgRole.VIEWER: 0,
-    OrgRole.MEMBER: 1,
-    OrgRole.ADMIN: 2,
-    OrgRole.OWNER: 3,
-}
+#: authorization checks from turning into long membership tests. The ordering
+#: itself lives in `packages/db/enums.py`, beside the enum, because member
+#: administration needs the same ordering and the two must not diverge.
+_ROLE_RANK = ROLE_RANK
 
 
 async def get_membership(

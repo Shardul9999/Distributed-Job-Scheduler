@@ -10,6 +10,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { api } from "./api";
+import type { OrgRole } from "./types";
 
 const REFRESH = 5000; // 5s: brisk enough to feel live, cheap for the API.
 
@@ -168,6 +169,39 @@ export function useDlqMutations(projectId: string | null) {
     }),
     discard: useMutation({
       mutationFn: (id: string) => api.discardDlq(projectId!, id),
+      onSuccess: invalidate,
+    }),
+  };
+}
+
+// --- members (RBAC) ------------------------------------------------------
+// No polling interval: a roster changes when someone on this screen changes it,
+// not continuously in the background like queue depth does.
+
+export function useMembers(orgId: string | null) {
+  return useQuery({
+    queryKey: ["members", orgId],
+    queryFn: () => api.members(orgId!),
+    enabled: !!orgId,
+  });
+}
+
+export function useMemberMutations(orgId: string | null) {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["members"] });
+  return {
+    add: useMutation({
+      mutationFn: ({ email, role }: { email: string; role: OrgRole }) =>
+        api.addMember(orgId!, email, role),
+      onSuccess: invalidate,
+    }),
+    setRole: useMutation({
+      mutationFn: ({ userId, role }: { userId: string; role: OrgRole }) =>
+        api.updateMemberRole(orgId!, userId, role),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (userId: string) => api.removeMember(orgId!, userId),
       onSuccess: invalidate,
     }),
   };

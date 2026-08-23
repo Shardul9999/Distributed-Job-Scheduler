@@ -4,6 +4,11 @@ Every route below the collection level declares a `require_role(...)`
 dependency. Because the check runs before the handler body, a route physically
 cannot serve a caller who lacks the role -- there is no code path where the
 authorization check is forgotten.
+
+The member routes bind that dependency's return value rather than discarding it:
+managing people needs the *actor's* rank, not just the fact that they cleared
+the bar. Granting a role above your own, or demoting someone above you, is
+refused in `org_service` -- see `_assert_may_grant` / `_assert_may_target`.
 """
 
 from __future__ import annotations
@@ -25,7 +30,7 @@ from apps.api.schemas.organization import (
     OrganizationUpdate,
 )
 from apps.api.services import org_service
-from packages.db import OrgRole
+from packages.db import OrganizationMember, OrgRole
 
 router = APIRouter(prefix="/orgs", tags=["organizations"])
 
@@ -123,36 +128,49 @@ async def list_members(
     "/{org_id}/members",
     response_model=MemberResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_role(OrgRole.ADMIN))],
     responses={**_NOT_FOUND, **_FORBIDDEN},
     summary="Add an existing user to the organization (admin+)",
 )
 async def add_member(
-    org_id: OrgId, payload: MemberAddRequest, db: DbSession
+    org_id: OrgId,
+    payload: MemberAddRequest,
+    db: DbSession,
+    actor: Annotated[OrganizationMember, Depends(require_role(OrgRole.ADMIN))],
 ) -> MemberResponse:
-    return MemberResponse(**await org_service.add_member(db, org_id, payload))
+    return MemberResponse(
+        **await org_service.add_member(db, org_id, payload, actor.role)
+    )
 
 
 @router.patch(
     "/{org_id}/members/{user_id}",
     response_model=MessageResponse,
-    dependencies=[Depends(require_role(OrgRole.ADMIN))],
     responses={**_NOT_FOUND, **_FORBIDDEN},
-    summary="Change a member's role (admin+)",
+    summary="Change a member's role (admin+, and never above your own)",
 )
 async def update_member(
-    org_id: OrgId, user_id: UserId, payload: MemberUpdateRequest, db: DbSession
+    org_id: OrgId,
+    user_id: UserId,
+    payload: MemberUpdateRequest,
+    db: DbSession,
+    actor: Annotated[OrganizationMember, Depends(require_role(OrgRole.ADMIN))],
 ) -> MessageResponse:
-    await org_service.update_member_role(db, org_id, user_id, payload.role)
+    await org_service.update_member_role(
+        db, org_id, user_id, payload.role, actor.role
+    )
     return MessageResponse(message=f"Role updated to {payload.role.value}")
 
 
 @router.delete(
     "/{org_id}/members/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_role(OrgRole.ADMIN))],
     responses={**_NOT_FOUND, **_FORBIDDEN},
-    summary="Remove a member (admin+)",
+    summary="Remove a member (admin+, and never one who outranks you)",
 )
-async def remove_member(org_id: OrgId, user_id: UserId, db: DbSession) -> None:
-    await org_service.remove_member(db, org_id, user_id)
+async def remove_member(
+    org_id: OrgId,
+    user_id: UserId,
+    db: DbSession,
+    actor: Annotated[OrganizationMember, Depends(require_role(OrgRole.ADMIN))],
+) -> None:
+    await org_service.remove_member(db, org_id, user_id, actor.role)

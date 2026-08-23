@@ -12,7 +12,7 @@ cron scheduling, crash recovery, dead-letter handling, and a live operator dashb
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/tests-41%20passing-success)](tests/)
+[![Tests](https://img.shields.io/badge/tests-45%20passing-success)](tests/)
 
 </div>
 
@@ -29,7 +29,7 @@ cron scheduling, crash recovery, dead-letter handling, and a live operator dashb
 | ⏰ **Cron scheduling** | IANA timezones, DST-safe, no double-fire |
 | 👑 **Leader election** | `pg_try_advisory_lock`, no lease, no split-brain |
 | 📊 **Live dashboard** | 6 pages, SSE streaming, throughput/latency charts |
-| 🧪 **41 tests** | real PostgreSQL via testcontainers, no mocks |
+| 🧪 **45 tests** | real PostgreSQL via testcontainers, no mocks |
 
 </div>
 
@@ -121,11 +121,24 @@ HTTP, so it needs no dependencies. It prints the demo login when it finishes:
 | Email | `demo@codity.dev` |
 | Password | `demodemo123` |
 
-Six pages: **Overview** (live metrics + charts), **Queues** (depth, pause /
+Seven pages: **Overview** (live metrics + charts), **Queues** (depth, pause /
 resume), **Job Explorer** (filter, keyset paging, per-job execution history and
 logs, retry / cancel), **Workers** (fleet with heartbeat freshness),
-**Schedules** (cron entries, next fire time, manual trigger), and **Dead
-Letters** (failure inspection and replay).
+**Schedules** (cron entries, next fire time, manual trigger), **Dead Letters**
+(failure inspection and replay), and **Team** (roster, invite by email, change
+role, remove).
+
+**Roles are visible, not just enforced.** Your role in the current
+organization shows in the sidebar, and every write control — pause, retry,
+cancel, trigger, replay, discard — is disabled with a reason when your role is
+below `member`. A viewer who sees a greyed-out *Retry* learns the action exists
+and that their role withholds it; hiding it would just look like a bare page.
+The client-side check is a courtesy: every one of those actions is refused again
+server-side, which is what `tests/test_authorization.py` asserts.
+
+Sign-up is self-service at **/register** — one call creates the account, its
+organization, and a token pair, so a second account for testing roles takes
+about fifteen seconds.
 
 **Design language.** The dashboard deliberately mirrors Codity's own product
 console: the surface, border, text, accent and status colours are Codity's design
@@ -427,3 +440,4 @@ underlying table is being written to concurrently.
 | 2 | Retries, DLQ, cron scheduler, reaper, concurrency tests | **Done** |
 | 3 | Dashboard, SSE live updates, charts, metrics endpoints | **Done** |
 | 4 | Diagrams, design decisions, API docs, bonuses (RBAC · distributed lock · AI summaries) | **Done** |
+| — | Post-build hardening: fleet-wide concurrency cap, project/queue/policy-scoped role enforcement, role-administration rules, Team + sign-up screens | **Done** |
