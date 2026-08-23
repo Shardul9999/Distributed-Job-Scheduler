@@ -537,10 +537,13 @@ loop already backs off 100 ms → 2 s).
 
 ### Known local-only drift
 
-The working `codity` volume does **not** match the README: the viewer's password
-there is `viewer-demo-1234`, because those accounts predate `seed.py` seeding
-them and it skips existing members rather than resetting passwords. It also
-holds ~180 `Org <hex>` test organizations (~15,600 jobs) from running the suite
+The viewer's password on the working `codity` volume was `viewer-demo-1234`
+rather than the documented `teamdemo123`, because those accounts predate
+`seed.py` seeding them and it skips existing members rather than resetting
+passwords. Resolved on 23 Aug by rehashing that one row to the documented
+password (`update users set password_hash=...` for `sam.okafor@codity.dev`);
+the README and `seed.py` were left alone, since they are what a fresh clone
+gets. The volume still holds ~180 `Org <hex>` test organizations (~15,600 jobs) from running the suite
 against the live database — invisible in the tenant-scoped dashboard, but they
 inflate system-wide Workers and Overview figures. Both clear with
 `docker compose down -v && docker compose up -d && python scripts/seed.py`,
