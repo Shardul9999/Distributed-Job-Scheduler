@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡ Codity — Distributed Job Scheduler
+#  Codity — Distributed Job Scheduler
 
 **A production-inspired distributed job scheduler where PostgreSQL *is* the queue.**
 
