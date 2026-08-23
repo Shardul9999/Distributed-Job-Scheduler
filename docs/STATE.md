@@ -475,6 +475,82 @@ read as decisions rather than oversights.
 
 ---
 
+## Post-Day-4 — CI, a cold-clone check, and a README audit (committed, pushed)
+
+**CI.** `.github/workflows/ci.yml`, green on its first run: `pytest` against a
+PostgreSQL 16 service container (46s), `tsc --noEmit` (29s), and `docker compose
+build` (37s). Three jobs because three things break independently — and the
+quick-start promise is `docker compose up`, so a broken image is a broken
+submission even with every test green. No test changes were needed: `conftest.py`
+already read `TEST_DATABASE_URL` and fell back to Testcontainers, so CI just
+points it at the service container. Every compose variable has a `:-` default,
+so the build job needs no `.env`.
+
+The README's `tests-45 passing` badge was **hand-typed** — it read `32` through
+two changes that took the suite to 45, because nothing updated it but memory. It
+is now the workflow's live status.
+
+**Cold-clone check — and a trap worth knowing.** First attempt looked clean, then
+`seed.py` reported "Project 'Production' already exists" on a supposedly fresh
+database. Cause: `docker-compose.yml` line 7 pins `name: codity`, so a clone in
+any directory **reuses the same project, containers and volume**. To get a
+genuinely empty volume, override the project name:
+
+```bash
+docker compose -p codity_coldstart up -d      # fresh volume, original untouched
+```
+
+Redone that way: 0 users, 14 tables, `/health` `/ready` `/docs` and the dashboard
+all 200, then seed → 67 completed, 5 dead letters, 3 active workers, 85
+executions (more than 72 jobs, so retries fired), and **exactly 1 advisory lock**
+across 2 schedulers — leader election working from a cold boot.
+
+**README audit.** Checked against the code rather than memory; six items had
+drifted. Wrong: "6 pages" (7), accent `#0075ff` (now `#7a7fe0` — the marketing
+indigo lifted for near-black), radii "3–6px" (2–8px), "tokens live in
+`tailwind.config.ts`" (they are CSS custom properties in `globals.css` now; the
+config only references them), "32 decisions" (34). Understated: the RBAC bullet
+predated enforcement below the organization. **Missing entirely:** any
+instruction for running the tests — a grader had no command. Now documented,
+with why a separate database matters, and run before being documented.
+
+**Seeded team.** `scripts/seed.py` created only the owner, so the role system was
+invisible to a reader. It now seeds an admin, two members and a viewer into the
+demo org, and the README lists both logins:
+
+| Role | Email | Password |
+|---|---|---|
+| owner | `demo@codity.dev` | `demodemo123` |
+| viewer | `sam.okafor@codity.dev` | `teamdemo123` |
+
+Signing in as the viewer is the fastest proof RBAC is real: the sidebar badge
+reads `viewer`, every write control is disabled with its reason, and the same
+calls return 403 against the API directly. Verified on a virgin volume — both
+logins 200, all four ranks present, viewer 200 on reads and 403 on pause,
+enqueue and project delete. Re-running is idempotent.
+
+**Deliberately not done**, after weighing them on 23 Aug: a free-tier AWS
+deployment (1 GB cannot hold 8 containers without cutting the worker and
+scheduler replicas the architecture is graded on, and deployment earns no rubric
+marks) and "adaptive scheduling" (not on the assignment's bonus list; the claim
+loop already backs off 100 ms → 2 s).
+
+### Known local-only drift
+
+The working `codity` volume does **not** match the README: the viewer's password
+there is `viewer-demo-1234`, because those accounts predate `seed.py` seeding
+them and it skips existing members rather than resetting passwords. It also
+holds ~180 `Org <hex>` test organizations (~15,600 jobs) from running the suite
+against the live database — invisible in the tenant-scoped dashboard, but they
+inflate system-wide Workers and Overview figures. Both clear with
+`docker compose down -v && docker compose up -d && python scripts/seed.py`,
+which costs ~346 throwaway probe accounts and no real data. **Not run — the
+user had not decided.**
+
+Still owed: a ~60s screen recording of the working system.
+
+---
+
 ## Remaining days
 
 *None — Day 4 was the final day. The build is feature-complete and documented;
