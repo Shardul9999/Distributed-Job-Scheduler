@@ -104,6 +104,23 @@ whole system: throughput and latency charts, queue depth, the live worker fleet,
 cron schedules, and the dead-letter queue — all updating live over Server-Sent
 Events.
 
+![Overview — live fleet metrics, throughput, queue depth and latency percentiles](docs/screenshots/01-overview.png)
+
+*Overview: three workers heartbeating with 30 slots of capacity, the elected
+scheduler leader, and throughput / latency charts streaming over SSE.*
+
+![Dead letter drawer with an AI-generated failure summary](docs/screenshots/02-dlq-ai-summary.png)
+
+*A dead letter opened: the stack trace and original payload are kept for
+forensics, and Claude summarises the cause in one line — generated on demand
+when the drawer opens.*
+
+![Team page signed in as the viewer role](docs/screenshots/03-viewer-team-rbac.png)
+
+*Signed in as the viewer: the role badge follows you into the sidebar, the
+member-management form is replaced by the reason it is unavailable, and every
+rank in the organization is visible in the roster.*
+
 To see it populated, seed a demo tenant with queues, a cron schedule, a
 realistic job mix (fast successes, retries that recover, failures that
 dead-letter), and a team at every role:
