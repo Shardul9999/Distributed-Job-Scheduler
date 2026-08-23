@@ -29,9 +29,22 @@ cron scheduling, crash recovery, dead-letter handling, and a live operator dashb
 | ⏰ **Cron scheduling** | IANA timezones, DST-safe, no double-fire |
 | 👑 **Leader election** | `pg_try_advisory_lock`, no lease, no split-brain |
 | 📊 **Live dashboard** | 7 pages, SSE streaming, throughput/latency charts |
-| 🧪 **45 tests** | real PostgreSQL, no mocks — run on every push by [CI](.github/workflows/ci.yml) |
+| 🧪 **48 tests** | real PostgreSQL, no mocks — run on every push by [CI](.github/workflows/ci.yml) |
 
 </div>
+
+---
+
+## Deliverables
+
+| Required | Where |
+|---|---|
+| Source code with setup instructions | This repository — [Quick start](#quick-start) |
+| Architecture diagram | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [diagrams below](#architecture) |
+| ER diagram | [docs/ER-DIAGRAM.md](docs/ER-DIAGRAM.md) · 13 tables |
+| API documentation | [docs/API.md](docs/API.md) · [openapi.json](docs/openapi.json) · live at `/docs` |
+| Design decisions document | [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) · 34 trade-offs |
+| Automated tests | [tests/](tests/) · 48 tests on real PostgreSQL · [how to run](#running-the-tests) |
 
 ---
 
@@ -138,10 +151,13 @@ HTTP, so it needs no dependencies. It prints two logins when it finishes:
 | **viewer** | `sam.okafor@codity.dev` | `teamdemo123` | read-only |
 
 Both are at **http://localhost:3000**. Sign in as the **viewer** to see
-authorization from the other side: the sidebar badge reads `viewer`, and Pause,
-Retry, Cancel, Run-now, Replay and Discard are all disabled with the reason on
-hover. It is not a UI trick — the same calls return `403` if you make them
-directly against the API, which is what `tests/test_authorization.py` asserts.
+authorization from the other side: the sidebar badge reads `viewer`, and every
+write control — pause, retry, cancel, trigger, replay, discard — is disabled
+with its reason on hover. A viewer who sees a greyed-out *Retry* learns the
+action exists and that their role withholds it; hiding it would just look like a
+bare page. The disabling is a courtesy, not the control: the same calls return
+`403` made directly against the API, which is what
+[`tests/test_authorization.py`](tests/test_authorization.py) asserts.
 
 Seven pages: **Overview** (live metrics + charts), **Queues** (depth, pause /
 resume), **Job Explorer** (filter, keyset paging, per-job execution history and
@@ -150,36 +166,14 @@ logs, retry / cancel), **Workers** (fleet with heartbeat freshness),
 (failure inspection and replay), and **Team** (roster, invite by email, change
 role, remove).
 
-**Roles are visible, not just enforced.** Your role in the current
-organization shows in the sidebar, and every write control — pause, retry,
-cancel, trigger, replay, discard — is disabled with a reason when your role is
-below `member`. A viewer who sees a greyed-out *Retry* learns the action exists
-and that their role withholds it; hiding it would just look like a bare page.
-The client-side check is a courtesy: every one of those actions is refused again
-server-side, which is what `tests/test_authorization.py` asserts.
-
-Sign-up is self-service at **/register** — one call creates the account, its
-organization, and a token pair, so a second account for testing roles takes
-about fifteen seconds.
-
-**Design language.** The dashboard deliberately mirrors Codity's own product
-console: surface, border, text and status colours are Codity's design tokens
-verbatim (`#090909` app, `#0d0d0d` surface, `#3ec98a` success, `#ff5b52`
-danger), set in **Archivo** with **JetBrains Mono** for machine-written values —
-the same pairing Codity uses. The one departure is the accent: codity.ai's
-marketing indigo is too dark to read against near-black, so it is *lifted* to
-`#7a7fe0` rather than swapped for a different hue — keeping the hue keeps the
-brand. Radii are kept tight (2–8px) for the same reason theirs are: an
-operations console should read as precise.
-
-**One theme, deliberately.** An earlier build shipped a light/dark toggle; it
-was removed. A scheduler dashboard is a monitoring surface that sits open on a
-second screen, and supporting two palettes meant every chart colour, every
-status badge and every hover wash had to be legible on two grounds — twice the
-surface for half the benefit. Colour tokens are CSS custom properties in
-[`globals.css`](apps/web/app/globals.css); `tailwind.config.ts` only references
-them, as `rgb(var(--c-x) / <alpha-value>)`, so the opacity modifiers the status
-badges rely on (`bg-ok/15`) keep working.
+**Design language.** The dashboard mirrors Codity's own console: its surface,
+border, text and status tokens verbatim (`#090909` app, `#0d0d0d` surface,
+`#3ec98a` success, `#ff5b52` danger), in **Archivo** with **JetBrains Mono** for
+machine-written values. The accent is *lifted* to `#7a7fe0` because codity.ai's
+marketing indigo is unreadable on near-black — same hue, so the brand survives.
+One theme, deliberately: a monitoring surface that sits open on a second screen
+does not need two palettes, each doubling the work of keeping charts, badges and
+hover washes legible.
 
 Live updates use SSE rather than WebSockets — the feed is strictly
 server→client, so `EventSource` (which reconnects natively) is the right tool.
@@ -196,7 +190,7 @@ Four independently deployable process types share one PostgreSQL database:
 ```mermaid
 flowchart TB
     subgraph browser["🌐 Browser"]
-        WEB["<b>Next.js Dashboard</b><br/>6 pages · Recharts · live SSE"]
+        WEB["<b>Next.js Dashboard</b><br/>7 pages · Recharts · live SSE"]
     end
 
     subgraph apitier["🔌 API tier — stateless, scales horizontally"]
@@ -441,7 +435,7 @@ docker compose exec postgres psql -U codity -d postgres -c "CREATE DATABASE codi
 
 docker compose exec \
   -e TEST_DATABASE_URL="postgresql+asyncpg://codity:codity_dev_password@postgres:5432/codity_test" \
-  api python -m pytest -q          # 45 passed
+  api python -m pytest -q          # 48 passed
 ```
 
 Use a **separate database**, not the running `codity` one. Workers poll every
@@ -492,20 +486,20 @@ underlying table is being written to concurrently.
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Four process types, module layering, job lifecycle, reliability guarantees |
 | [docs/ER-DIAGRAM.md](docs/ER-DIAGRAM.md) | 13-table ER diagram, FK cascade policy, indexes, enums |
-| [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) | 34 decisions with rejected alternatives and rationale |
 | [docs/API.md](docs/API.md) | Endpoint reference — 58 operations |
 | [docs/openapi.json](docs/openapi.json) | Machine-readable OpenAPI spec (also live at `/docs`) |
+| [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) | 34 decisions with rejected alternatives and rationale |
 | [docs/PLAN.md](docs/PLAN.md) | Full implementation plan, schema, build schedule |
 
 ---
 
 ## Status
 
-| Day | Scope | State |
-|---|---|---|
-| 0 | Scaffold, 13-table schema, migrations, auth, orgs, projects | **Done** |
-| 1 | Queue + job APIs, atomic claim query, worker service | **Done** |
-| 2 | Retries, DLQ, cron scheduler, reaper, concurrency tests | **Done** |
-| 3 | Dashboard, SSE live updates, charts, metrics endpoints | **Done** |
-| 4 | Diagrams, design decisions, API docs, bonuses (RBAC · distributed lock · AI summaries) | **Done** |
-| — | Post-build hardening: fleet-wide concurrency cap, project/queue/policy-scoped role enforcement, role-administration rules, Team + sign-up screens | **Done** |
+Feature-complete. The four-day plan landed in full: schema, migrations and auth;
+queue and job APIs over the atomic claim; retries, dead letters, cron and the
+reaper; the dashboard with live SSE; and the documentation set, with three
+bonuses built (distributed locking · RBAC · AI failure summaries).
+
+Hardened after the build: a fleet-wide concurrency cap, role enforcement scoped
+to project, queue and retry policy, role-administration rules that close a
+privilege-escalation path, and recovery for a live worker wrongly declared dead.
