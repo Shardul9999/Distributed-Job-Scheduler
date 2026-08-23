@@ -28,7 +28,7 @@ cron scheduling, crash recovery, dead-letter handling, and a live operator dashb
 | ♻️ **Crash recovery** | heartbeats + reaper revive a dead worker's jobs |
 | ⏰ **Cron scheduling** | IANA timezones, DST-safe, no double-fire |
 | 👑 **Leader election** | `pg_try_advisory_lock`, no lease, no split-brain |
-| 📊 **Live dashboard** | 6 pages, SSE streaming, throughput/latency charts |
+| 📊 **Live dashboard** | 7 pages, SSE streaming, throughput/latency charts |
 | 🧪 **45 tests** | real PostgreSQL, no mocks — run on every push by [CI](.github/workflows/ci.yml) |
 
 </div>
@@ -141,12 +141,23 @@ organization, and a token pair, so a second account for testing roles takes
 about fifteen seconds.
 
 **Design language.** The dashboard deliberately mirrors Codity's own product
-console: the surface, border, text, accent and status colours are Codity's design
-tokens verbatim (`--bg-app` `#090909`, `--bg-surface` `#0d0d0d`, `--accent`
-`#0075ff`, `--status-success` `#3ec98a`, …), set in **Archivo** with **JetBrains
-Mono** for machine-written values — the same pairing Codity uses. Radii are kept
-tight (3–6px) for the same reason theirs are: an operations console should read
-as precise. Tokens live in one place, [`tailwind.config.ts`](apps/web/tailwind.config.ts).
+console: surface, border, text and status colours are Codity's design tokens
+verbatim (`#090909` app, `#0d0d0d` surface, `#3ec98a` success, `#ff5b52`
+danger), set in **Archivo** with **JetBrains Mono** for machine-written values —
+the same pairing Codity uses. The one departure is the accent: codity.ai's
+marketing indigo is too dark to read against near-black, so it is *lifted* to
+`#7a7fe0` rather than swapped for a different hue — keeping the hue keeps the
+brand. Radii are kept tight (2–8px) for the same reason theirs are: an
+operations console should read as precise.
+
+**One theme, deliberately.** An earlier build shipped a light/dark toggle; it
+was removed. A scheduler dashboard is a monitoring surface that sits open on a
+second screen, and supporting two palettes meant every chart colour, every
+status badge and every hover wash had to be legible on two grounds — twice the
+surface for half the benefit. Colour tokens are CSS custom properties in
+[`globals.css`](apps/web/app/globals.css); `tailwind.config.ts` only references
+them, as `rgb(var(--c-x) / <alpha-value>)`, so the opacity modifiers the status
+badges rely on (`bg-ok/15`) keep working.
 
 Live updates use SSE rather than WebSockets — the feed is strictly
 server→client, so `EventSource` (which reconnects natively) is the right tool.
@@ -280,7 +291,8 @@ refunded — it never ran.
 
 The assignment listed eight; **three are implemented** and the other five are
 deliberately scoped out with a recorded rationale — full table in
-[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) §30–32.
+[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) §30–32 (RBAC in §31 and
+§31a).
 
 | Bonus | Status |
 |---|---|
@@ -298,9 +310,17 @@ The three that are built:
 - **Distributed locking** — the scheduler is a leader-elected singleton via
   `pg_try_advisory_lock` on a dedicated session-scoped connection. No lease, no
   TTL, no split-brain; a `kill -9` on the leader frees the lock automatically.
-- **RBAC** — ranked roles (`viewer < member < admin < owner`) enforced by a
-  FastAPI dependency that runs before the handler; non-members get `404`, not
-  `403`, so org ids can't be enumerated.
+- **RBAC** — ranked roles (`viewer < member < admin < owner`) enforced by
+  dependencies that run before the handler, at every scope a resource is
+  addressed by: organization, project, queue and retry policy. Each resolver
+  proves tenancy and reads the caller's role in one query, so the rank check
+  costs no extra round trip. Two refusals, for two reasons: outside the
+  organization is `404` so ids can't be enumerated, under-ranked inside it is
+  `403`. Handing out roles is separately constrained — nobody may grant a role
+  above their own or modify a member who outranks them, without which an admin
+  could promote themselves to owner and remove the founder. Visible in the
+  product on the **Team** page, and covered by 12 tests in
+  [`tests/test_authorization.py`](tests/test_authorization.py).
 - **AI failure summaries** — a dead-lettered job's stack trace is summarised into
   one plain-English cause on the DLQ page. **Optional and provider-agnostic:**
   set `GROQ_API_KEY` *or* `GEMINI_API_KEY` in `.env` to enable it (free tiers:
@@ -388,6 +408,32 @@ Open a database shell:
 docker exec -it codity-postgres psql -U codity -d codity
 ```
 
+### Running the tests
+
+The suite needs a real PostgreSQL and builds the schema with the real
+migrations, so the simplest way is to run it inside the API container against a
+database of its own:
+
+```bash
+docker compose exec postgres psql -U codity -d postgres -c "CREATE DATABASE codity_test OWNER codity;"
+
+docker compose exec \
+  -e TEST_DATABASE_URL="postgresql+asyncpg://codity:codity_dev_password@postgres:5432/codity_test" \
+  api python -m pytest -q          # 45 passed
+```
+
+Use a **separate database**, not the running `codity` one. Workers poll every
+unpaused queue, so a live fleet can claim jobs a test just inserted and the
+concurrency tests may then see a short count. `TEST_DATABASE_URL` is optional —
+without it the suite starts its own PostgreSQL via Testcontainers, which is what
+lets the same tests run on a laptop and inside the container where Docker is not
+reachable.
+
+The same suite runs on every push via
+[GitHub Actions](.github/workflows/ci.yml), alongside a frontend typecheck and a
+`docker compose build` — because the quick-start promise is `docker compose up`,
+and a broken image is a broken submission even with every test green.
+
 ---
 
 ## Conventions
@@ -424,7 +470,7 @@ underlying table is being written to concurrently.
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Four process types, module layering, job lifecycle, reliability guarantees |
 | [docs/ER-DIAGRAM.md](docs/ER-DIAGRAM.md) | 13-table ER diagram, FK cascade policy, indexes, enums |
-| [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) | 32 decisions with rejected alternatives and rationale |
+| [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) | 34 decisions with rejected alternatives and rationale |
 | [docs/API.md](docs/API.md) | Endpoint reference — 58 operations |
 | [docs/openapi.json](docs/openapi.json) | Machine-readable OpenAPI spec (also live at `/docs`) |
 | [docs/PLAN.md](docs/PLAN.md) | Full implementation plan, schema, build schedule |
