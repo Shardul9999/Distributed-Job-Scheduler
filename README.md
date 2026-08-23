@@ -12,7 +12,7 @@ cron scheduling, crash recovery, dead-letter handling, and a live operator dashb
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/tests-45%20passing-success)](tests/)
+[![CI](https://github.com/Shardul9999/Distributed-Job-Scheduler/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Shardul9999/Distributed-Job-Scheduler/actions/workflows/ci.yml)
 
 </div>
 
@@ -29,7 +29,7 @@ cron scheduling, crash recovery, dead-letter handling, and a live operator dashb
 | ⏰ **Cron scheduling** | IANA timezones, DST-safe, no double-fire |
 | 👑 **Leader election** | `pg_try_advisory_lock`, no lease, no split-brain |
 | 📊 **Live dashboard** | 6 pages, SSE streaming, throughput/latency charts |
-| 🧪 **45 tests** | real PostgreSQL via testcontainers, no mocks |
+| 🧪 **45 tests** | real PostgreSQL, no mocks — run on every push by [CI](.github/workflows/ci.yml) |
 
 </div>
 
