@@ -3,59 +3,14 @@
 @tailwind utilities;
 
 /*
- * Two themes, one token set.
+ * One theme: Codity's product console in dark mode.
  *
  * Every colour is stored as space-separated RGB channels rather than a hex
  * string, because Tailwind needs `rgb(var(--x) / <alpha-value>)` for opacity
  * modifiers to keep working -- the status badges lean on `bg-ok/15` and friends
  * throughout, and those would break under plain hex variables.
- *
- * Light is codity.ai's marketing palette (--paper / --ink / --accent). Dark is
- * Codity's own product console in dark mode, with the indigo accent lightened
- * so it still reads as their brand against near-black. Codity themselves ship
- * both via a [data-theme] attribute, which is the mechanism used here.
  */
-:root,
-:root[data-theme="light"] {
-  color-scheme: light;
-
-  --c-bg: 250 250 254; /* --paper */
-  --c-panel: 254 253 255; /* --paper-raised */
-  --c-head: 242 242 249; /* --paper-sunk */
-  --c-inset: 242 242 249;
-  --c-panel2: 242 242 249;
-  --c-raised: 233 233 242;
-
-  --c-border: 227 227 238;
-  --c-subtle: 238 238 245;
-  --c-strong: 201 201 216;
-
-  --c-fg: 27 30 46; /* --ink */
-  --c-muted: 110 113 126; /* --ink-3 */
-  --c-faint: 150 152 162; /* --ink-4 */
-
-  --c-brand: 80 85 211; /* --accent */
-  --c-brand-hover: 67 53 168; /* --accent-deep */
-  --c-brand-active: 58 47 146;
-
-  --c-ok: 18 136 90;
-  --c-danger: 209 59 48;
-  --c-warn: 181 113 26;
-  --c-info: 0 116 216;
-
-  /* codity.ai's hero gradient, verbatim. */
-  --brand-gradient: linear-gradient(
-    100deg,
-    #2c0d56 0%,
-    #281060 46%,
-    #1a1869 100%
-  );
-  --scroll-thumb: #c9c9d8;
-  --scroll-thumb-hover: #b3b3c6;
-  --card-shadow: 0 1px 2px rgba(27, 30, 46, 0.04);
-}
-
-:root[data-theme="dark"] {
+:root {
   color-scheme: dark;
 
   --c-bg: 9 9 9; /* --bg-app */
@@ -73,8 +28,9 @@
   --c-muted: 142 142 142; /* --text-secondary */
   --c-faint: 125 125 125; /* --text-tertiary */
 
-  /* The marketing indigo is too dark to read as an accent on near-black, so it
-     is lifted rather than swapped -- keeping the hue keeps the brand. */
+  /* codity.ai's marketing indigo is too dark to read as an accent on
+     near-black, so it is lifted rather than swapped -- keeping the hue keeps
+     the brand. */
   --c-brand: 122 127 224;
   --c-brand-hover: 146 150 236;
   --c-brand-active: 106 111 214;
@@ -84,16 +40,8 @@
   --c-warn: 245 168 60;
   --c-info: 47 142 255;
 
-  /* Same gradient, deepened so the rail does not glow beside near-black. */
-  --brand-gradient: linear-gradient(
-    100deg,
-    #1d0938 0%,
-    #1a0b40 46%,
-    #11134a 100%
-  );
   --scroll-thumb: #303030;
   --scroll-thumb-hover: #3d3d3d;
-  --card-shadow: none;
 }
 
 html,
@@ -103,16 +51,6 @@ body {
   /* Codity runs slightly tightened tracking on UI text; it is most of what
      makes Archivo read as theirs rather than as a generic grotesque. */
   letter-spacing: -0.011em;
-}
-
-/* Only the colours cross-fade on a theme switch. Transitioning `all` would
-   also animate layout properties and make the swap feel sluggish. */
-html.theme-ready body,
-html.theme-ready body * {
-  transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease,
-    color 0.18s ease;
 }
 
 * {
@@ -131,19 +69,9 @@ html.theme-ready body * {
   background: var(--scroll-thumb-hover);
 }
 
-/* The sidebar sits on the violet gradient in both themes, so its scrollbar
-   needs the inverse treatment or it vanishes into the panel. */
-.on-violet-scroll {
-  scrollbar-color: #ffffff33 transparent;
-}
-.on-violet-scroll::-webkit-scrollbar-thumb {
-  background: #ffffff33;
-}
-
 @layer components {
   .card {
     @apply rounded-lg border border-border bg-panel;
-    box-shadow: var(--card-shadow);
   }
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded border border-border

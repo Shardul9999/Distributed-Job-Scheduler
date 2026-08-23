@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Archivo, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { themeInitScript } from "@/lib/theme";
 
 // The same pairing Codity uses across their marketing site and product
 // dashboard: Archivo for UI, JetBrains Mono for anything the machine wrote --
@@ -31,17 +30,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // suppressHydrationWarning: the inline script below mutates `data-theme`
-    // before React hydrates, so the server's markup and the client's DOM
-    // legitimately differ on that one attribute.
     <html
       lang="en"
       className={`${archivo.variable} ${jetbrainsMono.variable}`}
-      suppressHydrationWarning
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-      </head>
       <body className="font-sans antialiased">
         <Providers>{children}</Providers>
       </body>

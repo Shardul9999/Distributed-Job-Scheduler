@@ -20,7 +20,6 @@ import {
   YAxis,
 } from "recharts";
 import { clockTime, durationMs } from "@/lib/format";
-import { useTheme } from "@/lib/theme";
 import type {
   JobStatus,
   LatencyResponse,
@@ -28,67 +27,42 @@ import type {
 } from "@/lib/types";
 
 // Recharts takes literal colour strings, not CSS classes, so the palette has to
-// exist in JS as well as in the Tailwind config. Resolving it through a hook
-// keyed on the active theme -- rather than as module constants -- is what makes
-// the charts actually repaint when the theme is toggled; constants would be
-// frozen at import time and the charts would keep their first palette forever.
-//
-// Light values are codity.ai's; dark values are Codity's console in dark mode.
-function useChartTheme() {
-  const { theme } = useTheme();
-  const dark = theme === "dark";
+// exist in JS as well as in the Tailwind config. These are Codity's console
+// values in dark mode, matching the tokens in globals.css.
+const COLORS = {
+  ok: "#3ec98a",
+  danger: "#ff5b52",
+  warn: "#f5a83c",
+  info: "#2f8eff",
+  brand: "#7a7fe0",
+};
 
-  const COLORS = dark
-    ? {
-        ok: "#3ec98a",
-        danger: "#ff5b52",
-        warn: "#f5a83c",
-        info: "#2f8eff",
-        brand: "#7a7fe0",
-      }
-    : {
-        ok: "#12885a",
-        danger: "#d13b30",
-        warn: "#b5711a",
-        info: "#0074d8",
-        brand: "#5055d3",
-      };
+const GRID = "#202020";
+const AXIS = "#8e8e8e";
 
-  const GRID = dark ? "#202020" : "#e3e3ee";
-  const AXIS = dark ? "#8e8e8e" : "#6e717e";
+const DEPTH_COLORS: Partial<Record<JobStatus, string>> = {
+  queued: COLORS.info,
+  scheduled: COLORS.warn,
+  claimed: COLORS.brand,
+  running: COLORS.brand,
+  completed: COLORS.ok,
+  failed: COLORS.danger,
+  dead: COLORS.danger,
+  cancelled: AXIS,
+};
 
-  const DEPTH_COLORS: Partial<Record<JobStatus, string>> = {
-    queued: COLORS.info,
-    scheduled: COLORS.warn,
-    claimed: COLORS.brand,
-    running: COLORS.brand,
-    completed: COLORS.ok,
-    failed: COLORS.danger,
-    dead: COLORS.danger,
-    cancelled: AXIS,
-  };
+// A hover wash has to contrast with the ground it sits on: white at 6%.
+const cursorFill = "#ffffff0f";
 
-  return {
-    GRID,
-    AXIS,
-    COLORS,
-    DEPTH_COLORS,
-    // Ink at 5% on light, white at 6% on dark: a hover wash has to contrast
-    // with the ground it sits on, and a single value cannot do both.
-    cursorFill: dark ? "#ffffff0f" : "#1b1e2e0d",
-    tooltipStyle: {
-      backgroundColor: dark ? "#131313" : "#fefdff",
-      border: `1px solid ${dark ? "#303030" : "#e3e3ee"}`,
-      borderRadius: 6,
-      fontSize: 12,
-      color: dark ? "#ededed" : "#1b1e2e",
-      boxShadow: dark ? "none" : "0 4px 12px rgba(27,30,46,0.08)",
-    },
-  };
-}
+const tooltipStyle = {
+  backgroundColor: "#131313",
+  border: `1px solid #303030`,
+  borderRadius: 6,
+  fontSize: 12,
+  color: "#ededed",
+};
 
 export function ThroughputChart({ data }: { data: ThroughputResponse }) {
-  const { GRID, AXIS, COLORS, tooltipStyle } = useChartTheme();
   const rows = data.points.map((p) => ({
     t: clockTime(p.bucket),
     succeeded: p.succeeded,
@@ -146,7 +120,6 @@ export function ThroughputChart({ data }: { data: ThroughputResponse }) {
 }
 
 export function LatencyChart({ data }: { data: LatencyResponse }) {
-  const { GRID, AXIS, COLORS, tooltipStyle } = useChartTheme();
   const rows = data.points.map((p) => ({
     t: clockTime(p.bucket),
     p50: p.p50_ms,
@@ -194,8 +167,6 @@ export function QueueDepthChart({
 }: {
   data: Record<JobStatus, number>;
 }) {
-  const { GRID, AXIS, COLORS, DEPTH_COLORS, tooltipStyle, cursorFill } =
-    useChartTheme();
   const rows = (Object.keys(data) as JobStatus[])
     .map((status) => ({ status, count: data[status] }))
     .filter((r) => r.count > 0);
@@ -253,7 +224,6 @@ export function QueueDepthChart({
 }
 
 export function Sparkline({ values }: { values: number[] }) {
-  const { GRID, AXIS, COLORS, tooltipStyle } = useChartTheme();
   const rows = values.map((v, i) => ({ i, v }));
   return (
     <ResponsiveContainer width="100%" height={36}>
