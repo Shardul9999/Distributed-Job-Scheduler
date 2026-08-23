@@ -12,13 +12,18 @@ which came back cannot corrupt it.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, insert, select, text, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from apps.worker import main as worker_main
 
 from apps.scheduler import reaper
 from packages.db import DeadLetterEntry, Job, JobExecution, Worker
@@ -296,3 +301,86 @@ async def test_heartbeat_retention_trims_old_samples(db: AsyncSession) -> None:
         {"w": worker_id},
     )
     assert remaining == 0
+
+
+async def test_wrongly_reaped_worker_takes_its_place_back(
+    db: AsyncSession,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live worker that was declared dead recovers on its next heartbeat.
+
+    Being reaped is a verdict reached from silence, and silence lies: a
+    suspended laptop or a brief database outage looks exactly like a crash.
+    Before this, the verdict was permanent -- the process kept claiming and
+    running jobs, but stayed `dead` forever, invisible in the fleet list and
+    contributing nothing to capacity, while the reaper went on handing its
+    in-flight work to other workers. Beating again is proof of life, and has
+    to count for something.
+    """
+    worker_id = await _worker(db, beat_age_s=300)
+
+    assert await reaper.mark_dead_workers(db, threshold_s=60) >= 1
+    await db.commit()
+    assert (await db.get(Worker, worker_id)).status is WorkerStatus.DEAD
+
+    @asynccontextmanager
+    async def _test_scope() -> AsyncGenerator[AsyncSession, None]:
+        async with sessionmaker() as session:
+            yield session
+            await session.commit()
+
+    monkeypatch.setattr(worker_main, "session_scope", _test_scope)
+
+    worker = worker_main.JobWorker()
+    worker.id = worker_id
+    worker.heartbeat_interval_s = 30  # long: we stop it after the first beat
+
+    task = asyncio.create_task(worker.heartbeat_loop())
+    await asyncio.sleep(0.5)
+    worker._stopping.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    await db.commit()  # drop this session's snapshot, then re-read
+    revived = await db.get(Worker, worker_id)
+    await db.refresh(revived)
+    assert revived.status is WorkerStatus.ACTIVE
+    assert revived.stopped_at is None, "a live worker has no stop time"
+
+
+@pytest.mark.parametrize("status", [WorkerStatus.DRAINING, WorkerStatus.STOPPED])
+async def test_heartbeat_does_not_drag_back_a_leaving_worker(
+    db: AsyncSession,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    status: WorkerStatus,
+) -> None:
+    """Only `dead` is reversible.
+
+    `draining` and `stopped` are a worker's own decision to leave, mid-shutdown
+    or already finished. Resurrecting either would put jobs back on a process
+    that is on its way out -- the opposite of a graceful drain.
+    """
+    worker_id = await _worker(db, status=status)
+
+    @asynccontextmanager
+    async def _test_scope() -> AsyncGenerator[AsyncSession, None]:
+        async with sessionmaker() as session:
+            yield session
+            await session.commit()
+
+    monkeypatch.setattr(worker_main, "session_scope", _test_scope)
+
+    worker = worker_main.JobWorker()
+    worker.id = worker_id
+    worker.heartbeat_interval_s = 30
+
+    task = asyncio.create_task(worker.heartbeat_loop())
+    await asyncio.sleep(0.5)
+    worker._stopping.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    await db.commit()
+    unchanged = await db.get(Worker, worker_id)
+    await db.refresh(unchanged)
+    assert unchanged.status is status

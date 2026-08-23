@@ -115,6 +115,18 @@ class JobWorker:
         and an append to the `worker_heartbeats` time series that the dashboard
         charts. Kept in one task so that a stalled event loop stops both --
         which is precisely the condition the reaper needs to detect.
+
+        A third write undoes a *premature* reaping. If this process was paused
+        long enough to miss the heartbeat threshold -- a suspended laptop, a
+        briefly unreachable database -- the reaper will have declared us dead
+        and handed our in-flight jobs to someone else. Beating again proves
+        that verdict wrong, so we take `active` back rather than staying a
+        ghost: still claiming work, but absent from the fleet list and from
+        capacity. Only `dead` is reversed. A worker that is `draining` or
+        `stopped` asked to leave, and must be allowed to.
+
+        A genuinely wedged worker cannot exploit this, because the stall that
+        makes it wedged is the same stall that stops this loop.
         """
         while not self._stopping.is_set():
             try:
@@ -127,6 +139,22 @@ class JobWorker:
                             jobs_processed=self._processed,
                         )
                     )
+                    revived = await db.execute(
+                        update(Worker)
+                        .where(Worker.id == self.id, Worker.status == WorkerStatus.DEAD)
+                        .values(status=WorkerStatus.ACTIVE, stopped_at=None)
+                    )
+                    if revived.rowcount:
+                        # Loud on purpose: the fleet lost work it did not need
+                        # to lose. Any job the reaper reclaimed is now fenced
+                        # (`lock_token = NULL`), so our writes for it are
+                        # discarded and it runs exactly once elsewhere.
+                        log.warning(
+                            "worker.resurrected",
+                            worker_id=str(self.id),
+                            heartbeat_interval_s=self.heartbeat_interval_s,
+                        )
+
                     await db.execute(
                         insert(WorkerHeartbeat).values(
                             worker_id=self.id,
