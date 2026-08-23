@@ -399,10 +399,18 @@ reasons.
 `get_session` overridden — authorization lives in the dependency chain, so a
 service-level test would bypass the thing under test entirely.
 
-**Trap worth remembering:** running the suite against the live `codity` database
-fails `test_claim_concurrency.py` — the three worker containers claim the test's
-jobs (170/200 completed). Always point `TEST_DATABASE_URL` at `codity_test`, as
-the command above already does.
+**Why `TEST_DATABASE_URL` must point at `codity_test`, not `codity`.** Workers
+poll *every* unpaused queue (`_target_queues`, and no `WORKER_QUEUES` is set), so
+the live fleet can claim jobs a test just inserted. The test's own claimers give
+up after two consecutive empty rounds, so a stolen chunk shows up as a short
+count rather than an error — observed once as `test_exactly_once_execution_end_to_end`
+failing `170 == 200`, with the no-double-execution assertion still passing.
+
+Frequency: **once**, and not reproducible on demand — 19 subsequent runs against
+live `codity` all passed, including with the fleet held in fast-poll mode by a
+2,140-job backlog. Treat it as a real but rare interference, not a certainty. An
+isolated database removes the variable for free, which is why the command above
+uses one.
 
 DESIGN-DECISIONS.md §31 rewritten: it previously claimed "a route physically
 cannot forget its check", which was only true of routes that declared one.
