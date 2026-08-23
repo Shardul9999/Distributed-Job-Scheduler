@@ -35,6 +35,19 @@ DEMO_NAME = "Demo Operator"
 DEMO_ORG = "Acme Corp"
 PROJECT_NAME = "Production"
 
+# A roster at every rank, so the Team page is not an empty table and the role
+# system can be seen working rather than taken on trust. The viewer login is
+# the useful one: signed in as Sam, every write control on the dashboard is
+# disabled with a reason, and the API refuses the same actions with 403.
+TEAM_PASSWORD = os.getenv("SEED_TEAM_PASSWORD", "teamdemo123")
+VIEWER_EMAIL = "sam.okafor@codity.dev"
+TEAM = [
+    ("priya.desai@codity.dev", "Priya Desai", "admin"),
+    ("marco.silva@codity.dev", "Marco Silva", "member"),
+    ("ana.kowalski@codity.dev", "Ana Kowalski", "member"),
+    (VIEWER_EMAIL, "Sam Okafor", "viewer"),
+]
+
 _token: str | None = None
 
 
@@ -145,6 +158,47 @@ def ensure_schedule(project_id: str, queue_id: str, name: str, **cfg) -> None:
     print(f"[ok] Created schedule '{name}'")
 
 
+def ensure_team(org_id: str) -> None:
+    """Give the demo organization a member at every role.
+
+    Each teammate is registered first, because `POST /orgs/{id}/members` adds an
+    *existing* account by email -- the same constraint a real admin hits. Their
+    own organization (created by registration) is harmless and unused; they work
+    inside Acme Corp through the membership added here.
+    """
+    status, existing = call("GET", f"/orgs/{org_id}/members")
+    known = {m["email"] for m in existing} if status == 200 else set()
+
+    added = 0
+    for email, name, role in TEAM:
+        if email in known:
+            continue
+        # 409 means the account exists from an earlier run -- fine, we only need
+        # it to exist before the membership is created.
+        call(
+            "POST",
+            "/auth/register",
+            {
+                "email": email,
+                "password": TEAM_PASSWORD,
+                "full_name": name,
+                "organization_name": f"{name} Personal",
+            },
+        )
+        status, body = call(
+            "POST", f"/orgs/{org_id}/members", {"email": email, "role": role}
+        )
+        if status in (200, 201):
+            added += 1
+        elif status != 409:
+            die(f"Failed to add {email} as {role}", body)
+
+    if added:
+        print(f"[ok] Added {added} teammates (admin, member x2, viewer)")
+    else:
+        print("[--] Team already seeded")
+
+
 def enqueue_batch(queue_id: str, jobs: list[dict]) -> int:
     status, resp = call("POST", f"/queues/{queue_id}/jobs/batch", {"jobs": jobs})
     if status not in (200, 201):
@@ -156,6 +210,7 @@ def main() -> None:
     print(f"Seeding {PREFIX} ...\n")
     authenticate()
     org_id = get_org_id()
+    ensure_team(org_id)
     project_id = ensure_project(org_id)
 
     default_q = ensure_queue(
@@ -221,13 +276,16 @@ def main() -> None:
     )
 
     print(f"\n[ok] Enqueued {total} jobs across 3 queues")
-    print("\n" + "=" * 52)
+    print("\n" + "=" * 60)
     print("  Dashboard:  http://localhost:3000")
-    print(f"  Login:      {DEMO_EMAIL}")
-    print(f"  Password:   {DEMO_PASSWORD}")
-    print("=" * 52)
+    print(f"  Owner:      {DEMO_EMAIL} / {DEMO_PASSWORD}")
+    print(f"  Viewer:     {VIEWER_EMAIL} / {TEAM_PASSWORD}")
+    print("=" * 60)
     print("\nWorkers will drain these within seconds; the failing")
     print("emails will land in Dead Letters after their retries.")
+    print("\nSign in as the viewer to see RBAC from the other side: every")
+    print("write control is disabled with a reason, and the API refuses the")
+    print("same actions with 403 even if you call them directly.")
 
 
 if __name__ == "__main__":

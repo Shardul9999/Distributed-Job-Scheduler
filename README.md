@@ -104,22 +104,27 @@ whole system: throughput and latency charts, queue depth, the live worker fleet,
 cron schedules, and the dead-letter queue — all updating live over Server-Sent
 Events.
 
-To see it populated, seed a demo tenant with queues, a cron schedule, and a
+To see it populated, seed a demo tenant with queues, a cron schedule, a
 realistic job mix (fast successes, retries that recover, failures that
-dead-letter):
+dead-letter), and a team at every role:
 
 ```bash
 python scripts/seed.py
 ```
 
 The script uses only the Python standard library and talks to the API over
-HTTP, so it needs no dependencies. It prints the demo login when it finishes:
+HTTP, so it needs no dependencies. It prints two logins when it finishes:
 
-| | |
-|---|---|
-| URL | http://localhost:3000 |
-| Email | `demo@codity.dev` |
-| Password | `demodemo123` |
+| Role | Email | Password | |
+|---|---|---|---|
+| **owner** | `demo@codity.dev` | `demodemo123` | full access |
+| **viewer** | `sam.okafor@codity.dev` | `teamdemo123` | read-only |
+
+Both are at **http://localhost:3000**. Sign in as the **viewer** to see
+authorization from the other side: the sidebar badge reads `viewer`, and Pause,
+Retry, Cancel, Run-now, Replay and Discard are all disabled with the reason on
+hover. It is not a UI trick — the same calls return `403` if you make them
+directly against the API, which is what `tests/test_authorization.py` asserts.
 
 Seven pages: **Overview** (live metrics + charts), **Queues** (depth, pause /
 resume), **Job Explorer** (filter, keyset paging, per-job execution history and
