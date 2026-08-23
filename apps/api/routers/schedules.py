@@ -7,8 +7,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, status
 
-from apps.api.core.deps import AccessibleProject, CurrentUser, DbSession
-from apps.api.routers.queues import _authorized_queue
+from apps.api.core.deps import (
+    AccessibleProject,
+    DbSession,
+    WritableProject,
+    WritableQueue,
+)
 from apps.api.schemas.common import ErrorResponse, MessageResponse
 from apps.api.schemas.schedule import (
     ScheduleCreate,
@@ -20,18 +24,18 @@ from apps.api.services import schedule_service
 
 router = APIRouter(tags=["schedules"])
 
-QueueId = Annotated[uuid.UUID, Path(description="Queue id")]
 ScheduleId = Annotated[uuid.UUID, Path(description="Schedule id")]
 
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Not found"}}
+_FORBIDDEN = {403: {"model": ErrorResponse, "description": "Insufficient role"}}
 
 
 @router.post(
     "/queues/{queue_id}/schedules",
     response_model=ScheduleResponse,
     status_code=status.HTTP_201_CREATED,
-    responses=_NOT_FOUND,
-    summary="Create a recurring schedule",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Create a recurring schedule (member+)",
     description=(
         "Creates a cron *template*. The scheduler materialises a concrete job "
         "from it each time it comes due; the template itself is never executed. "
@@ -40,9 +44,8 @@ _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Not found"}}
     ),
 )
 async def create_schedule(
-    queue_id: QueueId, payload: ScheduleCreate, db: DbSession, user: CurrentUser
+    queue: WritableQueue, payload: ScheduleCreate, db: DbSession
 ) -> ScheduleResponse:
-    queue = await _authorized_queue(db, user, queue_id)
     schedule = await schedule_service.create_schedule(db, queue, payload)
     return ScheduleResponse.model_validate(schedule)
 
@@ -79,8 +82,8 @@ async def get_schedule(
 @router.patch(
     "/projects/{project_id}/schedules/{schedule_id}",
     response_model=ScheduleResponse,
-    responses=_NOT_FOUND,
-    summary="Update a schedule",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Update a schedule (member+)",
     description=(
         "Changing `cron_expression` or `timezone` recomputes `next_run_at` from "
         "now. Reactivating a paused schedule does the same, so a schedule paused "
@@ -88,7 +91,7 @@ async def get_schedule(
     ),
 )
 async def update_schedule(
-    project: AccessibleProject,
+    project: WritableProject,
     schedule_id: ScheduleId,
     payload: ScheduleUpdate,
     db: DbSession,
@@ -102,11 +105,11 @@ async def update_schedule(
 @router.delete(
     "/projects/{project_id}/schedules/{schedule_id}",
     response_model=MessageResponse,
-    responses=_NOT_FOUND,
-    summary="Delete a schedule (jobs it already created are kept)",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Delete a schedule (member+; jobs it already created are kept)",
 )
 async def delete_schedule(
-    project: AccessibleProject, schedule_id: ScheduleId, db: DbSession
+    project: WritableProject, schedule_id: ScheduleId, db: DbSession
 ) -> MessageResponse:
     await schedule_service.delete_schedule(db, project.id, schedule_id)
     return MessageResponse(message="Schedule deleted")
@@ -116,11 +119,11 @@ async def delete_schedule(
     "/projects/{project_id}/schedules/{schedule_id}/trigger",
     response_model=ScheduleTriggerResponse,
     status_code=status.HTTP_201_CREATED,
-    responses=_NOT_FOUND,
-    summary="Fire a schedule immediately, without shifting its timetable",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Fire a schedule immediately (member+), without shifting its timetable",
 )
 async def trigger_schedule(
-    project: AccessibleProject, schedule_id: ScheduleId, db: DbSession
+    project: WritableProject, schedule_id: ScheduleId, db: DbSession
 ) -> ScheduleTriggerResponse:
     job_id, schedule = await schedule_service.trigger_schedule(
         db, project.id, schedule_id

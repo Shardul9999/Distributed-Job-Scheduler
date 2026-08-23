@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from apps.api.core.deps import AccessibleProject, DbSession
+from apps.api.core.deps import AccessibleProject, DbSession, WritableProject
 from apps.api.core.pagination import PageParams, page_params
 from apps.api.schemas.common import ErrorResponse, MessageResponse, PageResponse
 from apps.api.schemas.dlq import DeadLetterResponse, ReplayRequest, ReplayResponse
@@ -18,6 +18,7 @@ router = APIRouter(tags=["dead letter queue"])
 EntryId = Annotated[uuid.UUID, Path(description="Dead letter entry id")]
 
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Not found"}}
+_FORBIDDEN = {403: {"model": ErrorResponse, "description": "Insufficient role"}}
 
 
 @router.get(
@@ -65,8 +66,8 @@ async def get_dlq_entry(
     "/projects/{project_id}/dlq/{entry_id}/replay",
     response_model=ReplayResponse,
     status_code=status.HTTP_201_CREATED,
-    responses=_NOT_FOUND,
-    summary="Re-enqueue a dead job as a new job",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Re-enqueue a dead job as a new job (member+)",
     description=(
         "Creates a **new** job and stamps this entry with `replayed_job_id`. "
         "The original stays `dead` and the entry stays in place, so the record "
@@ -76,7 +77,7 @@ async def get_dlq_entry(
     ),
 )
 async def replay_entry(
-    project: AccessibleProject,
+    project: WritableProject,
     entry_id: EntryId,
     payload: ReplayRequest,
     db: DbSession,
@@ -93,11 +94,11 @@ async def replay_entry(
 @router.delete(
     "/projects/{project_id}/dlq/{entry_id}",
     response_model=MessageResponse,
-    responses=_NOT_FOUND,
-    summary="Discard a dead-letter entry (the dead job row is kept)",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Discard a dead-letter entry (member+; the dead job row is kept)",
 )
 async def discard_entry(
-    project: AccessibleProject, entry_id: EntryId, db: DbSession
+    project: WritableProject, entry_id: EntryId, db: DbSession
 ) -> MessageResponse:
     await dlq_service.discard(db, project.id, entry_id)
     return MessageResponse(message="Dead letter entry discarded")

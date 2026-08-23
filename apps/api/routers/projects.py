@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Path, status
 
 from apps.api.core.deps import (
     AccessibleProject,
+    AdminProject,
     CurrentUser,
     DbSession,
     get_membership,
@@ -84,11 +85,11 @@ async def get_project(project: AccessibleProject) -> ProjectResponse:
 @router.patch(
     "/projects/{project_id}",
     response_model=ProjectResponse,
-    responses=_NOT_FOUND,
-    summary="Update a project",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Update a project (admin+)",
 )
 async def update_project(
-    project: AccessibleProject, payload: ProjectUpdate, db: DbSession
+    project: AdminProject, payload: ProjectUpdate, db: DbSession
 ) -> ProjectResponse:
     updated = await project_service.update(db, project.id, payload)
     return ProjectResponse.model_validate(updated)
@@ -97,21 +98,21 @@ async def update_project(
 @router.delete(
     "/projects/{project_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses=_NOT_FOUND,
-    summary="Delete a project and all its queues and jobs",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Delete a project and all its queues and jobs (admin+)",
 )
-async def delete_project(project: AccessibleProject, db: DbSession) -> None:
+async def delete_project(project: AdminProject, db: DbSession) -> None:
     await project_service.delete_project(db, project.id)
 
 
 @router.post(
     "/projects/{project_id}/api-key",
     response_model=ApiKeyResponse,
-    responses=_NOT_FOUND,
-    summary="Rotate the project API key (plaintext returned once)",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Rotate the project API key (admin+; plaintext returned once)",
 )
 async def rotate_api_key(
-    project: AccessibleProject, db: DbSession
+    project: AdminProject, db: DbSession
 ) -> ApiKeyResponse:
     key = await project_service.rotate_api_key(db, project.id)
     return ApiKeyResponse(api_key=key)

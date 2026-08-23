@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-import uuid
-from typing import Annotated
+from fastapi import APIRouter, status
 
-from fastapi import APIRouter, Path, status
-
-from apps.api.core.deps import AccessibleProject, CurrentUser, DbSession
-from apps.api.core.errors import NotFoundError
+from apps.api.core.deps import (
+    AccessibleProject,
+    AdminQueue,
+    DbSession,
+    ReadableQueue,
+    WritablePolicy,
+    WritableProject,
+    WritableQueue,
+)
 from apps.api.schemas.common import ErrorResponse
 from apps.api.schemas.queue import (
     QueueCreate,
@@ -20,40 +24,11 @@ from apps.api.schemas.queue import (
     RetryPolicyUpdate,
 )
 from apps.api.services import queue_service
-from packages.db import Organization, OrganizationMember, Project, Queue
 
 router = APIRouter(tags=["queues"])
 
-QueueId = Annotated[uuid.UUID, Path(description="Queue id")]
-PolicyId = Annotated[uuid.UUID, Path(description="Retry policy id")]
-
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Not found"}}
-
-
-async def _authorized_queue(db: DbSession, user: CurrentUser, queue_id: uuid.UUID) -> Queue:
-    """Load a queue only if the caller belongs to its owning organization.
-
-    Queue ids are exposed throughout the dashboard, so every queue-scoped route
-    must re-verify tenancy rather than trusting the id. One join chain
-    (queue -> project -> org -> membership) does it in a single query.
-    """
-    from sqlalchemy import select
-
-    stmt = (
-        select(Queue)
-        .join(Project, Project.id == Queue.project_id)
-        .join(Organization, Organization.id == Project.org_id)
-        .join(
-            OrganizationMember,
-            (OrganizationMember.org_id == Organization.id)
-            & (OrganizationMember.user_id == user.id),
-        )
-        .where(Queue.id == queue_id)
-    )
-    queue = (await db.execute(stmt)).scalar_one_or_none()
-    if queue is None:
-        raise NotFoundError("Queue not found")
-    return queue
+_FORBIDDEN = {403: {"model": ErrorResponse, "description": "Insufficient role"}}
 
 
 # =============================================================================
@@ -65,11 +40,11 @@ async def _authorized_queue(db: DbSession, user: CurrentUser, queue_id: uuid.UUI
     "/projects/{project_id}/retry-policies",
     response_model=RetryPolicyResponse,
     status_code=status.HTTP_201_CREATED,
-    responses=_NOT_FOUND,
-    summary="Create a reusable retry policy",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Create a reusable retry policy (member+)",
 )
 async def create_policy(
-    project: AccessibleProject, payload: RetryPolicyCreate, db: DbSession
+    project: WritableProject, payload: RetryPolicyCreate, db: DbSession
 ) -> RetryPolicyResponse:
     policy = await queue_service.create_policy(db, project.id, payload)
     return RetryPolicyResponse.model_validate(policy)
@@ -91,13 +66,13 @@ async def list_policies(
 @router.patch(
     "/retry-policies/{policy_id}",
     response_model=RetryPolicyResponse,
-    responses=_NOT_FOUND,
-    summary="Update a retry policy",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Update a retry policy (member+)",
 )
 async def update_policy(
-    policy_id: PolicyId, payload: RetryPolicyUpdate, db: DbSession, user: CurrentUser
+    policy: WritablePolicy, payload: RetryPolicyUpdate, db: DbSession
 ) -> RetryPolicyResponse:
-    policy = await queue_service.update_policy(db, policy_id, payload)
+    policy = await queue_service.update_policy(db, policy.id, payload)
     return RetryPolicyResponse.model_validate(policy)
 
 
@@ -107,13 +82,12 @@ async def update_policy(
     responses={
         **_NOT_FOUND,
         409: {"model": ErrorResponse, "description": "Still referenced by a queue"},
+        **_FORBIDDEN,
     },
-    summary="Delete a retry policy (409 if a queue still uses it)",
+    summary="Delete a retry policy (member+; 409 if a queue still uses it)",
 )
-async def delete_policy(
-    policy_id: PolicyId, db: DbSession, user: CurrentUser
-) -> None:
-    await queue_service.delete_policy(db, policy_id)
+async def delete_policy(policy: WritablePolicy, db: DbSession) -> None:
+    await queue_service.delete_policy(db, policy.id)
 
 
 # =============================================================================
@@ -125,11 +99,11 @@ async def delete_policy(
     "/projects/{project_id}/queues",
     response_model=QueueResponse,
     status_code=status.HTTP_201_CREATED,
-    responses=_NOT_FOUND,
-    summary="Create a queue",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Create a queue (member+)",
 )
 async def create_queue(
-    project: AccessibleProject, payload: QueueCreate, db: DbSession
+    project: WritableProject, payload: QueueCreate, db: DbSession
 ) -> QueueResponse:
     queue = await queue_service.create_queue(db, project.id, payload)
     return QueueResponse.model_validate(queue)
@@ -152,53 +126,44 @@ async def list_queues(project: AccessibleProject, db: DbSession) -> list[QueueRe
     responses=_NOT_FOUND,
     summary="Fetch a queue",
 )
-async def get_queue(
-    queue_id: QueueId, db: DbSession, user: CurrentUser
-) -> QueueResponse:
-    return QueueResponse.model_validate(await _authorized_queue(db, user, queue_id))
+async def get_queue(queue: ReadableQueue) -> QueueResponse:
+    return QueueResponse.model_validate(queue)
 
 
 @router.patch(
     "/queues/{queue_id}",
     response_model=QueueResponse,
-    responses=_NOT_FOUND,
-    summary="Update queue configuration",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Update queue configuration (member+)",
 )
 async def update_queue(
-    queue_id: QueueId, payload: QueueUpdate, db: DbSession, user: CurrentUser
+    queue: WritableQueue, payload: QueueUpdate, db: DbSession
 ) -> QueueResponse:
-    await _authorized_queue(db, user, queue_id)
-    queue = await queue_service.update_queue(db, queue_id, payload)
-    return QueueResponse.model_validate(queue)
+    updated = await queue_service.update_queue(db, queue.id, payload)
+    return QueueResponse.model_validate(updated)
 
 
 @router.post(
     "/queues/{queue_id}/pause",
     response_model=QueueResponse,
-    responses=_NOT_FOUND,
-    summary="Pause a queue (running jobs finish; no new claims)",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Pause a queue (member+; running jobs finish, no new claims)",
 )
-async def pause_queue(
-    queue_id: QueueId, db: DbSession, user: CurrentUser
-) -> QueueResponse:
-    await _authorized_queue(db, user, queue_id)
+async def pause_queue(queue: WritableQueue, db: DbSession) -> QueueResponse:
     return QueueResponse.model_validate(
-        await queue_service.set_paused(db, queue_id, True)
+        await queue_service.set_paused(db, queue.id, True)
     )
 
 
 @router.post(
     "/queues/{queue_id}/resume",
     response_model=QueueResponse,
-    responses=_NOT_FOUND,
-    summary="Resume a paused queue",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Resume a paused queue (member+)",
 )
-async def resume_queue(
-    queue_id: QueueId, db: DbSession, user: CurrentUser
-) -> QueueResponse:
-    await _authorized_queue(db, user, queue_id)
+async def resume_queue(queue: WritableQueue, db: DbSession) -> QueueResponse:
     return QueueResponse.model_validate(
-        await queue_service.set_paused(db, queue_id, False)
+        await queue_service.set_paused(db, queue.id, False)
     )
 
 
@@ -208,19 +173,15 @@ async def resume_queue(
     responses=_NOT_FOUND,
     summary="Queue depth, throughput and health",
 )
-async def queue_stats(
-    queue_id: QueueId, db: DbSession, user: CurrentUser
-) -> QueueStatsResponse:
-    await _authorized_queue(db, user, queue_id)
-    return QueueStatsResponse(**await queue_service.get_stats(db, queue_id))
+async def queue_stats(queue: ReadableQueue, db: DbSession) -> QueueStatsResponse:
+    return QueueStatsResponse(**await queue_service.get_stats(db, queue.id))
 
 
 @router.delete(
     "/queues/{queue_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses=_NOT_FOUND,
-    summary="Delete a queue and all its jobs",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Delete a queue and all its jobs (admin+)",
 )
-async def delete_queue(queue_id: QueueId, db: DbSession, user: CurrentUser) -> None:
-    await _authorized_queue(db, user, queue_id)
-    await queue_service.delete_queue(db, queue_id)
+async def delete_queue(queue: AdminQueue, db: DbSession) -> None:
+    await queue_service.delete_queue(db, queue.id)

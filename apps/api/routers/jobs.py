@@ -7,7 +7,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, Path, Query, status
 
-from apps.api.core.deps import AccessibleProject, CurrentUser, DbSession
+from apps.api.core.deps import (
+    AccessibleProject,
+    DbSession,
+    WritableProject,
+    WritableQueue,
+)
 from apps.api.core.pagination import PageParams, page_params
 from apps.api.schemas.common import ErrorResponse, PageResponse
 from apps.api.schemas.job import (
@@ -21,25 +26,24 @@ from apps.api.schemas.job import (
     JobResponse,
 )
 from apps.api.services import job_service
-from apps.api.routers.queues import _authorized_queue
 from packages.db.enums import JobStatus
 
 from fastapi import Depends
 
 router = APIRouter(tags=["jobs"])
 
-QueueId = Annotated[uuid.UUID, Path(description="Queue id")]
 JobId = Annotated[uuid.UUID, Path(description="Job id")]
 
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Not found"}}
+_FORBIDDEN = {403: {"model": ErrorResponse, "description": "Insufficient role"}}
 
 
 @router.post(
     "/queues/{queue_id}/jobs",
     response_model=JobResponse,
     status_code=status.HTTP_201_CREATED,
-    responses=_NOT_FOUND,
-    summary="Enqueue a job (immediate, delayed, or scheduled)",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Enqueue a job (member+; immediate, delayed, or scheduled)",
     description=(
         "Omit `run_at` and `delay_seconds` to run immediately. Supply "
         "`delay_seconds` to run after a delay, or `run_at` for a specific "
@@ -48,14 +52,11 @@ _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Not found"}}
     ),
 )
 async def create_job(
-    queue_id: QueueId,
+    queue: WritableQueue,
     payload: JobCreate,
     db: DbSession,
-    user: CurrentUser,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JobResponse:
-    queue = await _authorized_queue(db, user, queue_id)
-
     # Header wins over body: it is the conventional transport for this and is
     # what an HTTP client library will set automatically on retry.
     if idempotency_key and not payload.idempotency_key:
@@ -69,13 +70,12 @@ async def create_job(
     "/queues/{queue_id}/jobs/batch",
     response_model=BatchJobResponse,
     status_code=status.HTTP_201_CREATED,
-    responses=_NOT_FOUND,
-    summary="Enqueue up to 1000 jobs in one transaction",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Enqueue up to 1000 jobs in one transaction (member+)",
 )
 async def create_batch(
-    queue_id: QueueId, payload: BatchJobCreate, db: DbSession, user: CurrentUser
+    queue: WritableQueue, payload: BatchJobCreate, db: DbSession
 ) -> BatchJobResponse:
-    queue = await _authorized_queue(db, user, queue_id)
     batch_id, job_ids = await job_service.enqueue_batch(db, queue, payload)
     return BatchJobResponse(batch_id=batch_id, created=len(job_ids), job_ids=job_ids)
 
@@ -164,11 +164,11 @@ async def job_logs(
 @router.post(
     "/projects/{project_id}/jobs/{job_id}/retry",
     response_model=JobResponse,
-    responses=_NOT_FOUND,
-    summary="Requeue a failed or dead job, resetting its attempt count",
+    responses={**_NOT_FOUND, **_FORBIDDEN},
+    summary="Requeue a failed or dead job (member+), resetting its attempt count",
 )
 async def retry_job(
-    project: AccessibleProject, job_id: JobId, db: DbSession
+    project: WritableProject, job_id: JobId, db: DbSession
 ) -> JobResponse:
     job = await job_service.retry_job(db, project.id, job_id)
     return JobResponse.model_validate(job)
@@ -180,11 +180,12 @@ async def retry_job(
     responses={
         **_NOT_FOUND,
         409: {"model": ErrorResponse, "description": "Already running or terminal"},
+        **_FORBIDDEN,
     },
-    summary="Cancel a job that has not started",
+    summary="Cancel a job that has not started (member+)",
 )
 async def cancel_job(
-    project: AccessibleProject, job_id: JobId, db: DbSession
+    project: WritableProject, job_id: JobId, db: DbSession
 ) -> JobResponse:
     job = await job_service.cancel_job(db, project.id, job_id)
     return JobResponse.model_validate(job)

@@ -183,13 +183,13 @@ self-reporting, so a crashed scheduler cannot look healthy.
 compute identical backoff; a job lost to a dead machine should not retry on a
 different schedule from one that failed in code.
 
-**Test suite** (`tests/`, pytest + testcontainers): **32 tests, all passing.**
+**Test suite** (`tests/`, pytest + testcontainers): **41 tests, all passing.**
 Real PostgreSQL, schema built by `alembic upgrade head` (not `create_all` --
 the migration is what ships). `TEST_DATABASE_URL` points the suite at an
 existing database, which is how it runs inside the API container.
 
 ```bash
-docker compose exec -T -e TEST_DATABASE_URL="postgresql+asyncpg://codity:codity_dev_password@postgres:5432/codity_test"   api python -m pytest tests/ -q          # 32 passed
+docker compose exec -T -e TEST_DATABASE_URL="postgresql+asyncpg://codity:codity_dev_password@postgres:5432/codity_test"   api python -m pytest tests/ -q          # 41 passed
 ```
 
 **Verified live, at scale:**
@@ -283,7 +283,7 @@ design, so other tests' orphaned jobs were counted by assertions on the global
 with an autouse fixture in `test_reaper.py` that `TRUNCATE`s the job/worker tables
 before each reaper test — fleet isolation without a global teardown, scoped to
 those tables so scaffold survives, safe because the suite only runs against
-`TEST_DATABASE_URL`. **Suite now 32 passed, stable across 3 consecutive runs.**
+`TEST_DATABASE_URL`. **Suite now 41 passed, stable across 3 consecutive runs.**
 
 **Documentation — four graded docs, written from live ground truth** (DB
 introspection + exported OpenAPI, not memory):
@@ -312,7 +312,7 @@ in the ER diagram; the decision is written up as §28.
 
 | Check | Result |
 |---|---|
-| Full pytest suite | **32 passed**, stable ×3 runs (was 32 with 1 known flake + 5 order-dependent) |
+| Full pytest suite | **41 passed**, stable ×3 runs (was 32 with 1 known flake + 5 order-dependent) |
 | AI summary disabled-by-default | `ai_summary_enabled=False`, `active_ai_provider=None` with no key; DLQ get unchanged |
 | New code imports in container | config + ai_summary + dlq_service import clean |
 | OpenAPI export | 42 paths / 58 operations, committed to `docs/openapi.json` |
@@ -354,6 +354,58 @@ Regression test `test_concurrency_cap_holds_with_a_warm_pool` warms the pool
 first and asserts DB row counts, not what the claim reports about itself.
 **Verified it fails on the old query** (18–30 in flight) before trusting it.
 Written up as DESIGN-DECISIONS.md §6a.
+
+---
+
+## Post-Day-4 fix — authorization below the organization (committed, pushed)
+
+**Trigger.** Reviewing whether the "implement authentication" requirement was
+satisfied. Core auth was fine — only five endpoints are public (`register`,
+`login`, `refresh`, `health`, `ready`); everything else needs a bearer token.
+The gap was RBAC: `require_role` reads `org_id` from the path, and **21 write
+endpoints are addressed by `project_id` / `queue_id` / `policy_id` instead**, so
+they only ever checked *membership*. A `viewer` could delete a project.
+
+**A real vulnerability, not just a missing check.** `PATCH` and `DELETE
+/retry-policies/{policy_id}` loaded the row with a bare `db.get()` — no join to
+an organization at all. Reproduced against the running stack: a second,
+unrelated org's token changed another tenant's `max_attempts` from 3 to 99, then
+deleted the policy. Both returned 200/204. These were the only writes addressed
+by an id with no `project_id` in the path — exactly the shape the single-scope
+dependency could not cover.
+
+**Fix.** Three resolvers in `apps/api/core/deps.py` — `require_project_role`,
+`require_queue_role`, `require_policy_role` — each walking resource → project →
+org → membership in **one** query that returns the resource *and* the caller's
+role. The tenancy join had to run anyway, so ranking the role costs nothing
+extra. Exposed as named aliases (`WritableQueue`, `AdminProject`, …) so a
+handler's signature states the privilege it demands. `_authorized_queue` in
+`routers/queues.py` became dead code and was removed.
+
+Line: `viewer` reads everything and writes nothing · `member` operates (enqueue,
+retry, cancel, pause, replay) · `admin` destroys history or issues credentials
+(delete project/queue, rotate API key) · `owner` everything. Outsiders get
+`404`, under-ranked members get `403` — different refusals for different
+reasons.
+
+| Check | Before | After |
+|---|---|---|
+| Ungated write routes | 21 | 0 |
+| Cross-tenant policy edit/delete | **200 / 204** | 404, row unchanged |
+| Auth tests in the suite | **0** | 8 (`tests/test_authorization.py`) |
+| Full suite | 33 passed | **41 passed** |
+
+`tests/test_authorization.py` drives the real ASGI app over `httpx` with only
+`get_session` overridden — authorization lives in the dependency chain, so a
+service-level test would bypass the thing under test entirely.
+
+**Trap worth remembering:** running the suite against the live `codity` database
+fails `test_claim_concurrency.py` — the three worker containers claim the test's
+jobs (170/200 completed). Always point `TEST_DATABASE_URL` at `codity_test`, as
+the command above already does.
+
+DESIGN-DECISIONS.md §31 rewritten: it previously claimed "a route physically
+cannot forget its check", which was only true of routes that declared one.
 
 ---
 

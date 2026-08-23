@@ -333,14 +333,50 @@ The singleton scheduler already needs `pg_try_advisory_lock` (§12). That *is* a
 distributed lock. The bonus is earned by the reliability design itself, not by
 bolting on a lock nobody else needed.
 
-### 31. RBAC — one ranked-role dependency, enforced before the handler
+### 31. RBAC — ranked roles, enforced at every scope a resource is addressed by
 
-`organization_members.role` was already in the schema. Authorization is a single
-FastAPI dependency, `require_role(minimum)`, backed by a role *ranking*
-(`viewer < member < admin < owner`) so a check for `MEMBER` is satisfied by
-`OWNER` without a membership enumeration. It runs as a route dependency, *before*
-the handler body, so a route physically cannot forget its check. Non-membership
-returns `404`, not `403`, so org ids cannot be enumerated by probing.
+`organization_members.role` was already in the schema. Authorization is a role
+*ranking* (`viewer < member < admin < owner`) so a check for `MEMBER` is
+satisfied by `OWNER` without a membership enumeration, applied by dependencies
+that run *before* the handler body.
+
+The subtlety is that one dependency is not enough. `require_role` reads `org_id`
+from the path, but most of the API is addressed by a different id —
+`project_id`, `queue_id`, `policy_id` — and those routes never carry an
+`org_id` to check. Enforcing roles there needs resolvers that walk the ownership
+chain themselves: `require_project_role`, `require_queue_role` and
+`require_policy_role`, each joining resource → project → org → membership.
+
+That join has to run anyway to prove tenancy, so selecting the membership row
+alongside the resource makes the role check **free** — the same single query
+answers "may you see this?" and "may you change it?". Each returns the resolved
+resource, so a handler receives `queue: WritableQueue` instead of a raw id and
+cannot proceed without the check having happened.
+
+Where the line falls:
+
+| Rank | May |
+|---|---|
+| `viewer` | read every page of the dashboard, change nothing |
+| `member` | operate the system — enqueue, retry, cancel, pause, replay, edit queues and schedules |
+| `admin` | destroy history or issue credentials — delete a project or queue, rotate an API key |
+| `owner` | everything, plus delete the organization |
+
+Two distinct refusals, deliberately: a caller **outside** the owning
+organization gets `404`, because a `403` would confirm the id exists and let an
+outsider enumerate other tenants' resources by probing. A caller **inside** the
+organization but below the required rank gets `403`, because at that point the
+resource's existence is not a secret — only the action is refused.
+
+**A bug this found.** `PATCH` and `DELETE /retry-policies/{policy_id}` took a
+bare id and loaded the row with `db.get()` — no join, no membership check at
+all. Any authenticated user could edit or delete *any* organization's retry
+policy knowing only its id. It was reproduced against the running stack (a
+second org's token changed `max_attempts` from 3 to 99, then deleted the row)
+before being fixed. It survived because those two routes were the only writes
+addressed by an id with no `project_id` in the path — exactly the shape the
+original single-scope dependency could not cover. `tests/test_authorization.py`
+now regression-tests it.
 
 ### 32. AI failure summaries — provider-agnostic, lazy, best-effort
 
@@ -375,7 +411,7 @@ were *decided against*, not missed, and each has a decision recorded above:
 | 4 | Queue sharding | **Scoped out.** Single-queue-per-row throughput is far from the ceiling at this scale; the partial claim index (§26) is what keeps claim latency flat, and sharding would add routing complexity for no measured gain. |
 | 5 | Event-driven execution | **Scoped out, with the path documented** (§10). The claim loop polls with idle backoff (100 ms → 2 s) because polling is trivially correct and self-healing; `LISTEN/NOTIFY` is named as the first optimisation if enqueue-to-start latency ever becomes the metric. |
 | 6 | WebSocket live updates | **Delivered by a different transport** (§20, §21). The dashboard *does* update live — via **SSE**, chosen deliberately because the data flow is server→client only. WebSockets would add a full-duplex channel to a half-duplex problem. The bonus's intent (live updates) is met; its named mechanism was rejected for a stated reason. |
-| 7 | Role-based access control | **Built** (§31) — ranked roles enforced by a dependency that runs before the handler. |
+| 7 | Role-based access control | **Built** (§31) — ranked roles enforced at org, project, queue and policy scope by dependencies that run before the handler. |
 | 8 | AI-generated failure summaries | **Built** (§32) — provider-agnostic, lazy, best-effort. |
 
 Naming what was chosen against — and why — is the point: five of these are
