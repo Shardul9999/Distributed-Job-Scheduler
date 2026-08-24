@@ -1,33 +1,41 @@
-# Build context exclusions for the Python image.
+# Build context exclusions.
 #
-# The image is built from the repo root and does `COPY . .`, so anything not
-# excluded here is baked into a layer -- permanently, even if a later layer
-# deletes it. Two things matter: secrets must never enter the context, and
-# host-built artefacts must never shadow what the image installs itself.
+# Both images are built from the repo root, so this one file governs both the
+# Python build (Dockerfile) and the dashboard build (apps/web/Dockerfile) --
+# apps/web/.dockerignore is inert, because it only applies when the context is
+# apps/web itself.
+#
+# Patterns are matched against the whole path from the context root, so a bare
+# `node_modules/` would match only a top-level one and miss apps/web's. Every
+# nested pattern needs the `**/` prefix.
 
-# --- Secrets. Never in an image, and never in a pushed layer. --------------
+# --- Secrets. Never in an image: a layer keeps them even if a later ---------
+# --- layer deletes the file. -----------------------------------------------
 .env
 .env.local
-*.local
+**/.env
+**/.env.local
+**/*.local
 
 # --- Host-built artefacts ---------------------------------------------------
-# Windows-built binaries that would break in the Linux container, and ~500MB
-# of context that slows every build.
+# These are Windows binaries (sharp, the Next SWC toolchain) that break inside
+# the Linux container. Excluding them also stops `COPY apps/web/ ./` from
+# clobbering the Linux node_modules that the web image installs itself.
+**/node_modules
+**/.next
+**/out
+**/dist
+**/.turbo
 .venv/
 venv/
-node_modules/
-.next/
-out/
-dist/
-.turbo/
 
 # --- Caches -----------------------------------------------------------------
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
 .coverage
 htmlcov/
 
@@ -40,6 +48,6 @@ docs/
 ForMe.txt
 
 # --- OS ---------------------------------------------------------------------
-.DS_Store
-Thumbs.db
-desktop.ini
+**/.DS_Store
+**/Thumbs.db
+**/desktop.ini
