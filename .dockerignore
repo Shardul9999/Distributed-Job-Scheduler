@@ -1,0 +1,45 @@
+# Build context exclusions for the Python image.
+#
+# The image is built from the repo root and does `COPY . .`, so anything not
+# excluded here is baked into a layer -- permanently, even if a later layer
+# deletes it. Two things matter: secrets must never enter the context, and
+# host-built artefacts must never shadow what the image installs itself.
+
+# --- Secrets. Never in an image, and never in a pushed layer. --------------
+.env
+.env.local
+*.local
+
+# --- Host-built artefacts ---------------------------------------------------
+# Windows-built binaries that would break in the Linux container, and ~500MB
+# of context that slows every build.
+.venv/
+venv/
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+
+# --- Caches -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Not needed at runtime --------------------------------------------------
+.git/
+.github/
+docs/
+.vscode/
+.idea/
+ForMe.txt
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
