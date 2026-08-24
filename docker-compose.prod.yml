@@ -1,0 +1,136 @@
+# Run the whole system from published images -- no clone, no build.
+#
+# The default docker-compose.yml builds from source and bind-mounts the repo
+# over each container, which is right for development but means the published
+# images are never actually exercised. This file is the opposite: it pulls
+# shardul005/codity-* from Docker Hub and mounts nothing, so what runs is
+# exactly what was published.
+#
+#   curl -O https://raw.githubusercontent.com/Shardul9999/Distributed-Job-Scheduler/main/docker-compose.prod.yml
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Every value below has a working default, so no .env is required. Override
+# JWT_SECRET_KEY and POSTGRES_PASSWORD for anything beyond a local trial.
+
+name: codity
+
+x-api-image: &api-image shardul005/codity-api:1.0
+
+x-db-env: &db-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: ${POSTGRES_USER:-codity}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codity_dev_password}
+  POSTGRES_DB: ${POSTGRES_DB:-codity}
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: codity-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-codity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codity_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-codity}
+    ports:
+      - "${POSTGRES_EXPOSED_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-codity} -d ${POSTGRES_DB:-codity}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    command: ["postgres", "-c", "max_connections=200"]
+    restart: unless-stopped
+
+  api:
+    image: *api-image
+    container_name: codity-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *db-env
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev_only_secret_change_me_in_production}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      # The API is the single migration owner, exactly as in the dev topology.
+      RUN_MIGRATIONS: "true"
+      AI_SUMMARY_PROVIDER: ${AI_SUMMARY_PROVIDER:-auto}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    entrypoint: ["bash", "/app/scripts/entrypoint.sh"]
+    # No --reload: the image is immutable, there is no source to watch.
+    command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    image: *api-image
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      <<: *db-env
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-10}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-100}
+      WORKER_HEARTBEAT_INTERVAL_S: ${WORKER_HEARTBEAT_INTERVAL_S:-10}
+      WORKER_SHUTDOWN_GRACE_S: ${WORKER_SHUTDOWN_GRACE_S:-30}
+      RUN_MIGRATIONS: "false"
+    entrypoint: ["bash", "/app/scripts/entrypoint.sh"]
+    command: ["python", "-m", "apps.worker.main"]
+    # Must exceed WORKER_SHUTDOWN_GRACE_S or a drain is SIGKILLed mid-flight.
+    stop_grace_period: 45s
+    deploy:
+      replicas: 3
+    restart: unless-stopped
+
+  scheduler:
+    image: *api-image
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      <<: *db-env
+      SCHEDULER_TICK_MS: ${SCHEDULER_TICK_MS:-1000}
+      SCHEDULER_LOCK_RETRY_S: ${SCHEDULER_LOCK_RETRY_S:-5}
+      REAPER_INTERVAL_S: ${REAPER_INTERVAL_S:-15}
+      WORKER_HEARTBEAT_TIMEOUT_S: ${WORKER_HEARTBEAT_TIMEOUT_S:-60}
+      HEARTBEAT_RETENTION_HOURS: ${HEARTBEAT_RETENTION_HOURS:-24}
+      RUN_MIGRATIONS: "false"
+    entrypoint: ["bash", "/app/scripts/entrypoint.sh"]
+    command: ["python", "-m", "apps.scheduler.main"]
+    # Two replicas: one wins the advisory lock, the other stands by.
+    deploy:
+      replicas: 2
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  web:
+    image: shardul005/codity-web:1.0
+    container_name: codity-web
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000/api/v1}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

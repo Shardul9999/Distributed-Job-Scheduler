@@ -77,6 +77,32 @@ Verify it is running:
 curl http://localhost:8000/health
 ```
 
+### Or run it without cloning
+
+The images are published, so the whole system can be started from a single
+file — no repository, no build:
+
+```bash
+curl -O https://raw.githubusercontent.com/Shardul9999/Distributed-Job-Scheduler/main/docker-compose.prod.yml
+docker compose -f docker-compose.prod.yml up -d
+```
+
+| Image | Contents | Size |
+|---|---|---|
+| [`shardul005/codity-api`](https://hub.docker.com/r/shardul005/codity-api) | API, worker and scheduler — one image, three commands | 751 MB |
+| [`shardul005/codity-web`](https://hub.docker.com/r/shardul005/codity-web) | Next.js dashboard | 995 MB |
+
+The API, workers and scheduler share one image deliberately: they run the same
+code and differ only in the command they are started with, so a single build
+makes it impossible for a worker to run a different version of the shared
+schema than the API does.
+
+[`docker-compose.prod.yml`](docker-compose.prod.yml) differs from the default
+compose file in two ways — it pulls the images rather than building them, and
+it mounts nothing over them. The development file bind-mounts the repository
+into every container for autoreload, which means the published images are never
+actually exercised; this one runs exactly what was pushed.
+
 ---
 
 ## Try it
