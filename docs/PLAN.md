@@ -478,7 +478,7 @@ original job; auth rejects cross-organization access.
 |---|---|---|
 | **Distributed locking** | ~0 | Already required for the singleton scheduler — `pg_try_advisory_lock`. Free mark. |
 | **RBAC** | ~1h | `organization_members.role` is already in the schema; one FastAPI dependency enforces it. |
-| **AI failure summaries** | ~1h | Claude API summarises a stack trace into a human-readable cause on the job detail page. Highest visible impact per hour on the whole list. |
+| **AI failure summaries** | ~1h | An LLM (Groq or Gemini) summarises a stack trace into a human-readable cause on the job detail page. Highest visible impact per hour on the whole list. |
 
 Deferred and explicitly named in the design doc as *known, scoped out*: workflow
 DAG dependencies (the `depends_on` column is already reserved), queue sharding,

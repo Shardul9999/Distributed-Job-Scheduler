@@ -125,8 +125,8 @@ scheduler leader, and throughput / latency charts streaming over SSE.*
 ![Dead letter drawer with an AI-generated failure summary](docs/screenshots/02-dlq-ai-summary.png)
 
 *A dead letter opened: the stack trace and original payload are kept for
-forensics, and Claude summarises the cause in one line — generated on demand
-when the drawer opens.*
+forensics, and an LLM summarises the cause in one line — generated on demand
+when the drawer opens. Shown here with Gemini; Groq is supported identically.*
 
 ![Team page signed in as the viewer role](docs/screenshots/03-viewer-team-rbac.png)
 
